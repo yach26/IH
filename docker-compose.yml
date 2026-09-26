@@ -1,0 +1,15 @@
+version: '3.8'
+services:
+  api:
+    build:
+      context: ./agrotwin_api
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./agrotwin_api/app:/app/app
+      - ./agrotwin_api/agrotwin.db:/app/agrotwin.db
+      - ./uploads:/app/uploads
+    environment:
+      - AGROTWIN_DB=/app/agrotwin.db
+      - AGROTWIN_UPLOADS=/app/uploads

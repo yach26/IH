@@ -493,14 +493,11 @@ class TestAppLedger:
         from app.ledger import run_field_ledger, write_ledger_result
         result = run_field_ledger(conn, field_row)
         rec_id = write_ledger_result(conn, result)
-        if result["status"] == "ABSTAIN":
-            assert rec_id is None
-        else:
-            assert isinstance(rec_id, int)
-            row = conn.execute(
-                "SELECT * FROM recommendations WHERE recommendation_id = ?", (rec_id,)
-            ).fetchone()
-            assert row is not None
+        assert isinstance(rec_id, int)
+        row = conn.execute(
+            "SELECT * FROM recommendations WHERE recommendation_id = ?", (rec_id,)
+        ).fetchone()
+        assert row is not None
 
     def test_llm_never_produces_quantities(self):
         import inspect

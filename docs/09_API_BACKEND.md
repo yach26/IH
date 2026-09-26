@@ -80,9 +80,11 @@ Never return raw LLM text as the plan.
 
 ## Checklist
 
-- [ ] `app/main.py` with lifespan (DB connection, event bus).
-- [ ] Routers split by domain (farmers, fields, recommendations, events).
-- [ ] Dependency injection for DB session and Orchestrator.
-- [ ] OpenAPI docs automatically generated and useful.
-- [ ] Error responses include abstain reasons when applicable.
-- [ ] CORS configured for the frontend.
+- [x] `app/main.py` with lifespan (DB connection, event bus).
+- [x] Routers split by domain (farmers, fields, recommendations, events). *(MVP: single `app/api/routes.py` with fields + events + health)*
+- [x] Dependency injection for DB session and Orchestrator.
+- [x] OpenAPI docs automatically generated and useful. (`/docs`)
+- [x] Error responses include abstain reasons when applicable. (`status: ABSTAIN` + `required_actions`)
+- [x] CORS configured for the frontend.
+
+Remaining (not this slice): farmer CRUD, OCR upload, what-if, agronomist override.

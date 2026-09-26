@@ -8,8 +8,8 @@ Each module is a thin, testable layer with a single responsibility:
   knowledge_agent — BM25 RAG over the Phase-1 data pack documents
   validation_agent— agronomic + weather-conflict plausibility checks
   monitoring_agent— event bus, SUPERSEDED / replan logic
-  orchestrator    — sequence the agents, called by GET /ledger
-  optimizer       — linprog weight-minimisation (replaces fixed DAP→Urea→MOP rule)
+  orchestrator    — thin wrapper around RecommendationPipeline
+  optimizer       — optional linprog (NOT the default; default is HeuristicOptimizer)
   twin_state      — shared TwinState TypedDict + confidence helpers
 
 Control-flow glue only lives in orchestrator.py.

@@ -71,13 +71,20 @@ agrotwin_api/          (and almost identical agrotwin_prototype/)
 - Confidence is computed from flags, not asserted by hand.
 
 **What is NOT yet implemented**:
-- FastAPI service
-- Multi-agent orchestration
-- Multi-objective optimizer (still using fixed DAP→Urea→MOP heuristic)
-- Agentic RAG
-- Weather event monitoring
+- Multi-objective MIP solver (heuristic is the **default** Optimizer; linprog exists but is not on the recommend path)
+- Real hybrid RAG beyond BM25 over the data pack
 - Frontend / PWA
 - Soil report OCR
+- What-If UI / growth simulator
+
+**Added 2026-09-27 (pipeline + optimizer + events)**:
+- `RecommendationPipeline` with full run and selective re-plan
+- Proof-carrying recommendation object (WHAT / HOW MUCH / WHEN / WHY / BASED ON WHAT / HOW SURE)
+- `Optimizer` Protocol; default = DAP→Urea→MOP via `ledger.convert_gap_to_products`
+- Rule engine (max rates, weather window, pH/EC, freshness, compatibility)
+- In-process event bus + Monitoring Agent
+- Demo wow path: `HEAVY_RAIN_ALERT` → `PLAN_INVALIDATED` → re-plan
+- FastAPI: `POST /fields/{id}/recommend`, `POST /events`, `GET /fields/{id}/alerts`
 
 This Phase-1 core is solid. All future work must build on top of `ledger.py` and the schema without breaking the traceability guarantee.
 

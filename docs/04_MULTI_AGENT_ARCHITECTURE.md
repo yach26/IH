@@ -144,10 +144,10 @@ On any of these the Orchestrator decides **which subset of agents** to re-run (s
 
 ## Implementation Checklist
 
-- [ ] Create `app/agents/` package with one module per agent.
-- [ ] Each agent exposes a single public method (`assess`, `retrieve`, `validate`, `monitor`, `handle_event`).
-- [ ] Orchestrator is the only place that sequences agents.
-- [ ] Monitoring Agent registers listeners on the event bus (or simple queue).
-- [ ] Unit tests for each agent in isolation (mock the twin).
-- [ ] Integration test: full recommendation + weather-change → re-plan path.
-- [ ] Never let an agent call the LLM to produce a kg/ha number.
+- [x] Create `app/agents/` package with one module per agent.
+- [x] Each agent exposes a single public method (`assess`, `retrieve`, `validate`, `monitor`, `handle_event`).
+- [x] Orchestrator is the only place that sequences agents. (delegates to `RecommendationPipeline`)
+- [x] Monitoring Agent registers listeners on the event bus (or simple queue).
+- [x] Unit tests for each agent in isolation (mock the twin).
+- [x] Integration test: full recommendation + weather-change → re-plan path.
+- [x] Never let an agent call the LLM to produce a kg/ha number.

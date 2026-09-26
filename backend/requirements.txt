@@ -1,0 +1,20 @@
+# AgroTwin AI — Backend Dependencies
+# =====================================
+# Core RAG requirements (Agentic RAG layer — doc 06)
+rank-bm25>=0.2.2
+
+# Dense retrieval (optional but recommended — graceful fallback to BM25-only)
+sentence-transformers>=2.7.0
+faiss-cpu>=1.7.4
+
+# Data / utilities
+numpy>=1.24.0
+
+# Testing
+pytest>=7.4.0
+
+# --- Future (not required for RAG layer) ---
+# fastapi>=0.111.0
+# uvicorn>=0.30.0
+# pydantic>=2.7.0
+# sqlite3 is stdlib

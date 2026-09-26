@@ -52,17 +52,37 @@ and exports `output/ledger_results.csv`.
    alongside the plan — so "proof-carrying recommendation" is enforced
    by the schema, not just promised in prose.
 
+## Recommendation pipeline + monitoring (2026-09-27)
+
+```bash
+cd agrotwin_api
+pip install -r requirements.txt
+python -m pytest tests/ -v
+```
+
+Happy path / abstain / partial re-plan: `tests/test_pipeline.py`  
+Heuristic + rules: `tests/test_optimizer_rules.py`  
+Heavy-rain wow path: `tests/test_monitoring_wow.py`
+
+```bash
+# In-memory wow demo (no server)
+python ../scripts/demo_heavy_rain.py
+
+# API
+python run_demo.py          # builds agrotwin.db
+uvicorn app.main:app --reload
+# POST /fields/{field_code}/recommend
+# POST /events  {"type":"HEAVY_RAIN_ALERT","field_code":"SYN-001", ...}
+```
+
+kg/ha still come only from `ledger.convert_gap_to_products` (HeuristicOptimizer).
+The LLM is not on this path.
+
 ## What this prototype is NOT yet
 
-- Not an API — this is a script, not a running FastAPI service (next step
-  in the build order).
-- No Soil/Crop/Weather agents — the "agent" logic here is a single
-  deterministic function (`ledger.run_field`). Wrapping this in the actual
-  multi-agent orchestration comes after this core is trusted.
-- No optimizer — DAP→Urea→MOP is a fixed rule (matches the source's
-  worked example), not a multi-objective optimization yet.
-- The 8 gaps in `04_remaining_gaps.md` still stand, **except** banana
-  density, which this prototype resolves using data already in the pack.
+- Not a multi-objective MIP solver (heuristic is the default Optimizer).
+- No farmer PWA / OCR / what-if UI.
+- The remaining gaps in `04_remaining_gaps.md` still stand except banana density.
 
 ## Traceability guarantee (unchanged from the frozen design)
 

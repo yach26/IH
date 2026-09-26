@@ -364,3 +364,23 @@ CREATE TABLE audit_log (
     new_value       TEXT,                   -- JSON
     created_at      TEXT DEFAULT CURRENT_TIMESTAMP
 );
+
+-- ──────────────────────────────────────────────
+-- Soil report OCR uploads (doc 11)
+-- Never written to soil_tests until farmer confirms.
+-- ──────────────────────────────────────────────
+
+CREATE TABLE soil_report_uploads (
+    upload_id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    field_id            INTEGER NOT NULL REFERENCES fields(field_id),
+    original_file_path  TEXT,
+    extracted_json      TEXT NOT NULL,      -- per-field {value, confidence}
+    status              TEXT NOT NULL DEFAULT 'PENDING_CONFIRMATION',
+    -- PENDING_CONFIRMATION | CONFIRMED | REJECTED | OCR_FAILED
+    created_at          TEXT DEFAULT CURRENT_TIMESTAMP,
+    confirmed_at        TEXT,
+    soil_test_id        INTEGER REFERENCES soil_tests(soil_test_id),
+    CHECK (status IN ('PENDING_CONFIRMATION','CONFIRMED','REJECTED','OCR_FAILED'))
+);
+
+CREATE INDEX idx_soil_uploads_field ON soil_report_uploads(field_id, created_at DESC);

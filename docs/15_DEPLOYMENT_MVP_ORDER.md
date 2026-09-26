@@ -52,9 +52,9 @@
 6. Validation Agent + confidence rules
 7. Event bus + Monitoring Agent + heavy-rain demo path
 8. Knowledge Agent + minimal RAG
-9. OCR pipeline + confirmation flow
+9. OCR pipeline + confirmation flow (Done)
 10. Farmer dashboard (Next.js)
-11. What-If endpoint + UI
+11. What-If endpoint + UI (Endpoint Done)
 12. Visual growth simulator (nice-to-have wow)
 13. Agronomist dashboard
 14. Docker Compose for one-command demo

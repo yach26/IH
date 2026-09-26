@@ -77,10 +77,31 @@ This single path communicates the closed-loop architecture better than any slide
 
 ## Checklist
 
-- [ ] Define Event model (type, field_id, payload, timestamp).
-- [ ] Simple event bus (Redis pub/sub or in-process queue).
-- [ ] Monitoring Agent registers handlers.
-- [ ] Orchestrator supports partial re-plan.
-- [ ] Demo script / admin endpoint that injects the rain event.
-- [ ] Audit log of every event and resulting action.
-- [ ] Integration test covering the full wow path.
+- [x] Define Event model (type, field_id, payload, timestamp). (`app/core/events.py`)
+- [x] Simple event bus (Redis pub/sub or in-process queue). (`InMemoryEventBus` in `app/core/event_bus.py`)
+- [x] Monitoring Agent registers handlers.
+- [x] Orchestrator supports partial re-plan. (`request_replan(agents=[...])`)
+- [x] Demo script / admin endpoint that injects the rain event. (`POST /events`, `scripts/demo_heavy_rain.py`)
+- [x] Audit log of every event and resulting action. (`audit_log` + `events` tables)
+- [x] Integration test covering the full wow path. (`tests/test_monitoring_wow.py`)
+
+### Done (2026-09-27)
+
+| Item | Where |
+|------|--------|
+| EventType enum + Event dataclass | `app/core/events.py` |
+| In-process bus + persist to `events` | `app/core/event_bus.py` |
+| HEAVY_RAIN_ALERT → PLAN_INVALIDATED → selective re-plan | `MonitoringAgent._handle_heavy_rain` |
+| Demo inject endpoint | `POST /events` in `app/api/routes.py` |
+| CLI demo | `scripts/demo_heavy_rain.py` |
+
+### How to run the wow path
+
+```bash
+# In-memory (no API):
+python scripts/demo_heavy_rain.py
+
+# HTTP (seed agrotwin.db first, then):
+cd agrotwin_api && uvicorn app.main:app --reload
+python scripts/demo_heavy_rain.py --http http://127.0.0.1:8000 --field SYN-001
+```
