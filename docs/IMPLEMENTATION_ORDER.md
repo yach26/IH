@@ -10,23 +10,23 @@ Use this as the living backlog. Check items off as they are completed.
 - [x] Banana density resolution
 
 ## Phase 1 — Core Service
-- [ ] Package ledger + schema into clean Python package
+- [x] Package ledger + schema into clean Python package
 - [ ] FastAPI app with `/fields/{id}/twin` and `/fields/{id}/recommend`
 - [ ] Pydantic models for TwinState and Recommendation
 - [ ] Basic error / abstain responses
 
 ## Phase 2 — Agents
-- [ ] Soil Agent
-- [ ] Crop Agent
-- [ ] Weather Agent (with synthetic injection)
-- [ ] Orchestrator (pure Python state machine)
-- [ ] Validation Agent
-- [ ] Monitoring Agent + event bus
-- [ ] Heavy-rain → re-plan path (demo wow)
+- [x] Soil Agent
+- [x] Crop Agent
+- [x] Weather Agent (with synthetic injection)
+- [x] Orchestrator (pure Python state machine)
+- [x] Validation Agent
+- [x] Monitoring Agent + event bus
+- [x] Heavy-rain → re-plan path (demo wow)
 
 ## Phase 3 — Evidence & OCR
-- [ ] Minimal RAG ingestion + hybrid retrieval
-- [ ] Knowledge Agent
+- [x] Minimal RAG ingestion + hybrid retrieval
+- [x] Knowledge Agent
 - [ ] OCR pipeline + farmer confirmation
 - [ ] Soil report upload endpoint
 
