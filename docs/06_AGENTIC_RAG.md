@@ -114,9 +114,17 @@ Plus hard metadata filters:
 
 ## Checklist
 
-- [ ] Ingestion script that writes chunks + metadata into vector store.
-- [ ] Hybrid retriever (dense + BM25 + RRF).
-- [ ] Knowledge Agent returns structured EvidencePack with citations.
-- [ ] Validation Agent checks that retrieved evidence is applicable (region/crop match).
-- [ ] No numeric extraction from LLM — only text evidence.
-- [ ] Clear fallback when no relevant evidence is found (still allow plan if confidence is otherwise acceptable, but lower confidence / flag it).
+- [x] Ingestion script that writes chunks + metadata into vector store.
+      → `backend/rag/ingestion.py` — `ingest_documents()` + `HybridIndex`
+- [x] Hybrid retriever (dense + BM25 + RRF).
+      → `HybridIndex.query()` — BM25 (rank_bm25) + optional FAISS dense + Reciprocal Rank Fusion
+- [x] Knowledge Agent returns structured EvidencePack with citations.
+      → `backend/app/agents/knowledge_agent.py` — `retrieve_evidence()` → `EvidencePack`
+- [x] Validation Agent checks that retrieved evidence is applicable (region/crop match).
+      → `backend/app/agents/rag_validation_agent.py` — `validate_evidence_pack()`
+- [x] No numeric extraction from LLM — only text evidence.
+      → Enforced in scope: Knowledge Agent returns text chunks only; quantities never generated.
+- [x] Clear fallback when no relevant evidence is found (still allow plan if confidence is otherwise acceptable, but lower confidence / flag it).
+      → `NO_EVIDENCE` confidence tier + `RAG_NO_EVIDENCE` flag; ledger plan is never blocked.
+
+**Tests**: `backend/tests/test_rag.py` — 38/38 passed ✅ (verified 2026-09-27)
