@@ -67,8 +67,8 @@ Every override is written to the audit log.
 
 ## Checklist
 
-- [ ] Validation Agent implements all abstain rules
+- [x] Validation Agent implements all abstain rules
 - [ ] Frontend clearly surfaces low-confidence and ABSTAIN states
-- [ ] Agronomist override endpoint + audit trail
-- [ ] No silent acceptance of low-quality data
-- [ ] Farmer confirmation required for OCR values
+- [x] Agronomist override endpoint + audit trail
+- [x] No silent acceptance of low-quality data
+- [x] Farmer confirmation required for OCR values

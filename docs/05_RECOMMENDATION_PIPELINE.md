@@ -84,8 +84,18 @@ If any critical step fails → return `status: "ABSTAIN"` with reasons and requi
 
 ## Implementation Checklist
 
-- [ ] Implement the pipeline as a pure function / class that takes `field_id` and returns a Recommendation.
-- [ ] Log every intermediate state for audit.
-- [ ] Support both “full run” and “partial re-plan” modes.
-- [ ] Ensure ledger is the single source of numeric truth.
-- [ ] Unit test each step in isolation; integration test the full happy path + abstain path + re-plan path.
+- [x] Implement the pipeline as a pure function / class that takes `field_id` and returns a Recommendation. (`agrotwin_api/app/pipeline.py` → `RecommendationPipeline`)
+- [x] Log every intermediate state for audit. (`pipeline_audit` on the proof object)
+- [x] Support both “full run” and “partial re-plan” modes. (`agents=[...]`)
+- [x] Ensure ledger is the single source of numeric truth. (`HeuristicOptimizer` → `ledger.convert_gap_to_products`)
+- [x] Unit test each step in isolation; integration test the full happy path + abstain path + re-plan path. (`tests/test_pipeline.py`)
+
+### Done (2026-09-27)
+
+| Item | Where |
+|------|--------|
+| Ordered Soil → Crop → Weather → Ledger → Optimizer → Validation → Knowledge | `app/pipeline.py` |
+| Proof-carrying object (WHAT / HOW MUCH / WHEN / WHY / BASED ON WHAT / HOW SURE) | `app/core/proof.py` |
+| ABSTAIN + required_actions | pipeline `_abstain()` |
+| Selective re-plan | `Orchestrator.request_replan()` |
+| Persist + invalidate old plan (`invalidated_at`, `SUPERSEDED`) | pipeline `_persist()` |

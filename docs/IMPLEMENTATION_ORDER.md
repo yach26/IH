@@ -11,9 +11,9 @@ Use this as the living backlog. Check items off as they are completed.
 
 ## Phase 1 — Core Service
 - [x] Package ledger + schema into clean Python package
-- [ ] FastAPI app with `/fields/{id}/twin` and `/fields/{id}/recommend`
-- [ ] Pydantic models for TwinState and Recommendation
-- [ ] Basic error / abstain responses
+- [x] FastAPI app with `/fields/{id}/twin` and `/fields/{id}/recommend`
+- [x] Pydantic models for TwinState and Recommendation
+- [x] Basic error / abstain responses
 
 ## Phase 2 — Agents
 - [x] Soil Agent
@@ -27,8 +27,8 @@ Use this as the living backlog. Check items off as they are completed.
 ## Phase 3 — Evidence & OCR
 - [x] Minimal RAG ingestion + hybrid retrieval
 - [x] Knowledge Agent
-- [ ] OCR pipeline + farmer confirmation
-- [ ] Soil report upload endpoint
+- [x] OCR pipeline + farmer confirmation
+- [x] Soil report upload endpoint
 
 ## Phase 4 — Frontend
 - [ ] Next.js PWA skeleton
@@ -40,9 +40,9 @@ Use this as the living backlog. Check items off as they are completed.
 
 ## Phase 5 — Polish & Demo
 - [ ] Visual Growth Simulator (optional wow)
-- [ ] Docker Compose
-- [ ] End-to-end demo script
-- [ ] Documentation update (`00_CONTEXT.md`)
+- [x] Docker Compose
+- [x] End-to-end demo script (`scripts/demo_heavy_rain.py` + `POST /events`)
+- [x] Documentation update (`00_CONTEXT.md`) — pipeline / optimizer / events slice
 - [ ] Judge pitch alignment
 
 ---

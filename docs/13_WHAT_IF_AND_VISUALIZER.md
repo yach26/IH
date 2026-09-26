@@ -52,7 +52,7 @@ A farmer-facing companion that shows plant appearance over growth stages.
 
 ## Checklist
 
-- [ ] `/what-if` endpoint that accepts delta parameters
+- [x] `/what-if` endpoint that accepts delta parameters
 - [ ] Frontend controls that call it and show delta
 - [ ] SVG asset set for pilot crops (4–5 states each)
 - [ ] Mapping from model outputs → visual states

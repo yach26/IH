@@ -49,9 +49,9 @@ extracted = {
 
 ## Checklist
 
-- [ ] Upload endpoint + storage of original file
-- [ ] OCR → structured fields with confidence
-- [ ] Confirmation UI that shows original image + extracted values side-by-side
-- [ ] Only confirmed values update the twin
-- [ ] Event emission after successful update
-- [ ] Graceful fallback when OCR fails completely (manual entry form)
+- [x] Upload endpoint + storage of original file
+- [x] OCR → structured fields with confidence
+- [x] Confirmation UI that shows original image + extracted values side-by-side
+- [x] Only confirmed values update the twin
+- [x] Event emission after successful update
+- [x] Graceful fallback when OCR fails completely (manual entry form)

@@ -83,9 +83,19 @@ class RuleEngine:
 
 ## Checklist
 
-- [ ] Keep current heuristic as default implementation of `Optimizer`.
-- [ ] Abstract it behind a clean interface.
-- [ ] Add a simple cost model (market prices of Urea/DAP/MOP as config).
-- [ ] Rule engine as a list of callable checks that return (pass/fail, reason).
-- [ ] Validation Agent runs the rule engine after optimization.
-- [ ] Unit tests for each rule and for the heuristic.
+- [x] Keep current heuristic as default implementation of `Optimizer`. (`HeuristicOptimizer` → `ledger.convert_gap_to_products`)
+- [x] Abstract it behind a clean interface. (`app/core/optimizer.py` `Optimizer` Protocol)
+- [x] Add a simple cost model (market prices of Urea/DAP/MOP as config). (`region_config.cost_model`, labelled ENGINEERING_DEFAULT / Gap #8)
+- [x] Rule engine as a list of callable checks that return (pass/fail, reason). (`app/core/rules.py`)
+- [x] Validation Agent runs the rule engine after optimization.
+- [x] Unit tests for each rule and for the heuristic. (`tests/test_optimizer_rules.py`)
+
+### Done (2026-09-27)
+
+| Item | Where |
+|------|--------|
+| `Optimizer` Protocol + `OptimizerPlan` | `app/core/optimizer.py` |
+| Default DAP→Urea→MOP heuristic (no quantity fork) | `HeuristicOptimizer` |
+| Optional linprog kept but **not** wired as default | `app/agents/optimizer.py` |
+| Cost estimate (INR/kg config, never used as kg/ha source) | `estimate_cost()` |
+| Rules: max RDF rates, Urea+SSP compatibility, weather window, pH, EC, soil freshness | `app/core/rules.py` + `region_config.py` |

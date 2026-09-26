@@ -196,9 +196,9 @@ At runtime the Orchestrator loads `region_id` from the field and injects the cor
 
 ## 6. Implementation Checklist
 
-- [ ] Formalise the full Postgres DDL matching current SQLite + new event/audit tables.
-- [ ] Ensure every `recommendations` row stores the complete proof-carrying payload in `plan_json`.
-- [ ] Add `invalidated_at` and `superseded_by` so the Monitoring Agent can mark plans stale.
-- [ ] Index on `(field_id, created_at DESC)` for “latest active plan” lookups.
-- [ ] Add foreign-key constraints and basic check constraints (confidence values, status values).
+- [x] Formalise the full Postgres DDL matching current SQLite + new event/audit tables.
+- [x] Ensure every `recommendations` row stores the complete proof-carrying payload in `plan_json`.
+- [x] Add `invalidated_at` and `superseded_by` so the Monitoring Agent can mark plans stale.
+- [x] Index on `(field_id, created_at DESC)` for “latest active plan” lookups.
+- [x] Add foreign-key constraints and basic check constraints (confidence values, status values).
 - [ ] Write a small migration script from current SQLite → Postgres.

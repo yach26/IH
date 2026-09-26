@@ -52,6 +52,6 @@ POST /events
 
 - [ ] Weather client with caching (Redis or in-memory)
 - [ ] Weather Agent that can emit events
-- [ ] Threshold configuration loaded from region config
-- [ ] Demo injection endpoint
-- [ ] Integration with Monitoring Agent
+- [x] Threshold configuration loaded from region config
+- [x] Demo injection endpoint
+- [x] Integration with Monitoring Agent

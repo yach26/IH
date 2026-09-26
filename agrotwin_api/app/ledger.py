@@ -158,7 +158,7 @@ def write_ledger_result(conn: sqlite3.Connection, result: dict) -> int | None:
                VALUES (?,?,?,?,?,?,?,?)""",
             (
                 field_id,
-                json.dumps({}),
+                json.dumps(result, default=str),
                 "ABSTAIN",
                 result.get("reason", ""),
                 json.dumps([]),
@@ -168,7 +168,7 @@ def write_ledger_result(conn: sqlite3.Connection, result: dict) -> int | None:
             ),
         )
         conn.commit()
-        return None
+        return cur.lastrowid
 
     # Write nutrient_ledger_entries row
     crop_code = result.get("crop")

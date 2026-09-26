@@ -3,28 +3,33 @@ Weather Agent — integrates Open-Meteo forecast API (Phase-2).
 
 Responsibility:
   - Fetch 7-day weather forecast (precipitation metrics) based on field lat/lon.
-  - Store snapshot in weather_snapshots table.
-  - Parse rainfall probability and next 7-day cumulative rainfall.
-  - Raise HEAVY_RAIN_ALERT if thresholds are exceeded.
+  - Cache snapshots in-memory (TTL) and in weather_snapshots.
+  - Raise HEAVY_RAIN_ALERT if region-config thresholds are exceeded.
+  - Optionally emit WEATHER_FORECAST_CHANGED / HEAVY_RAIN_ALERT via refresh_and_emit.
 
 Source reference:
   04_Weather/weather_sources.md specifies Open-Meteo for hackathon prototype.
-  Open-Meteo requires latitude and longitude.
 
-Threshold (ENGINEERING_DEFAULT):
-  heavy_rain_alert = rainfall_probability >= 70% AND rainfall_mm_next_7d >= 50 mm.
-  (This is a placeholder agronomic rule — see Gap #6. Soluble N fertilizers
-   leach under heavy rain; 50mm is a safe conservative trigger for alerting.)
+Thresholds live in region_config (ENGINEERING_DEFAULT pending Gap #6).
 """
 
 import sqlite3
 import json
+import time
 from datetime import datetime, timezone
 import requests
 
+from ..core.region_config import load_region_config
 
 # Open-Meteo API URL for daily precipitation forecast
 API_URL = "https://api.open-meteo.com/v1/forecast"
+CACHE_TTL_SECONDS = 900  # 15-minute in-memory cache (doc 12)
+_CACHE: dict[tuple[float, float], tuple[float, dict]] = {}
+
+
+def weather_thresholds() -> tuple[float, float]:
+    w = load_region_config()["rules"]["weather_windows"]
+    return float(w["rainfall_probability_pct"]), float(w["rainfall_mm_next_7d"])
 
 
 def get_weather_context(
@@ -50,10 +55,15 @@ def get_weather_context(
             "warning": "NO_COORDINATES",
         }
 
-    # Fetch fresh snapshot
+    # Fetch fresh snapshot (in-memory cache for live API calls)
     snapshot = None
+    cache_key = (round(float(lat), 4), round(float(lon), 4))
     if mock_snapshot:
         snapshot = _insert_snapshot_from_mock(conn, field_id, mock_snapshot)
+    elif not force_refresh and cache_key in _CACHE:
+        ts, cached = _CACHE[cache_key]
+        if time.time() - ts < CACHE_TTL_SECONDS:
+            snapshot = cached
     elif force_refresh:
         try:
             snapshot = _fetch_and_store_snapshot(conn, field_id, lat, lon)
@@ -72,11 +82,12 @@ def get_weather_context(
     alert_active = bool(snapshot["heavy_rain_alert"])
     alert_details = ""
     if alert_active:
+        prob_th, mm_th = weather_thresholds()
         alert_details = (
             f"7-day rainfall forecast: {snapshot['rainfall_mm_next_7d']} mm "
-            f"(threshold: 50 mm); max precipitation probability: "
-            f"{snapshot['rainfall_probability']}% (threshold: 70%). "
-            "ENGINEERING_DEFAULT thresholds — see weather_agent.py docstring."
+            f"(threshold: {mm_th} mm); max precipitation probability: "
+            f"{snapshot['rainfall_probability']}% (threshold: {prob_th}%). "
+            "ENGINEERING_DEFAULT thresholds — see region_config.py."
         )
 
     return {
@@ -108,7 +119,8 @@ def _fetch_and_store_snapshot(
     mm_7d = round(sum(val for val in p_sum if val is not None), 1)
     max_prob = max((val for val in p_prob if val is not None), default=0)
 
-    alert = (max_prob >= 70 and mm_7d >= 50.0)
+    prob_th, mm_th = weather_thresholds()
+    alert = (max_prob >= prob_th and mm_7d >= mm_th)
 
     now_iso = datetime.now(timezone.utc).isoformat()
     cur = conn.cursor()
@@ -121,7 +133,9 @@ def _fetch_and_store_snapshot(
     )
     conn.commit()
     new_id = cur.lastrowid
-    return _get_snapshot_by_id(conn, new_id)
+    snap = _get_snapshot_by_id(conn, new_id)
+    _CACHE[(round(float(lat), 4), round(float(lon), 4))] = (time.time(), snap)
+    return snap
 
 
 def _insert_snapshot_from_mock(conn: sqlite3.Connection, field_id: int, mock: dict) -> dict:
