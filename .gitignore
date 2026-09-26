@@ -1,10 +1,10 @@
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
-*.db
-*.sqlite3
-backend/rag/store/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
 .env
-.venv/
 venv/
+.venv/

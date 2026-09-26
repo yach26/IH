@@ -4,9 +4,21 @@
 -- Kept table/column names identical for a 1:1 mapping back to Postgres.
 -- Type changes only: SERIAL->INTEGER PK, JSONB->TEXT, GEOMETRY->TEXT,
 -- TIMESTAMPTZ->TEXT, BOOLEAN kept (SQLite stores as 0/1).
+--
+-- Phase-2 additions (doc 03_DATABASE_SCHEMA.md):
+--   - field_crops: one active crop per field
+--   - weather_snapshots: cached Open-Meteo forecasts
+--   - events: audit event stream (HEAVY_RAIN_ALERT, SOIL_REPORT_UPDATED, …)
+--   - audit_log: extended with actor/old_value/new_value columns
+--   - recommendations: added invalidated_at, superseded_by
+--   - Indexes on (field_id, created_at DESC) for fast "latest" queries
 -- ============================================================
 
 PRAGMA foreign_keys = ON;
+
+-- ──────────────────────────────────────────────
+-- Geography / Admin hierarchy
+-- ──────────────────────────────────────────────
 
 CREATE TABLE regions (
     region_id       INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -39,6 +51,10 @@ CREATE TABLE talukas (
     UNIQUE (district_id, taluka_code)
 );
 
+-- ──────────────────────────────────────────────
+-- Farmers & Fields
+-- ──────────────────────────────────────────────
+
 CREATE TABLE farmers (
     farmer_id       INTEGER PRIMARY KEY AUTOINCREMENT,
     region_id       INTEGER NOT NULL REFERENCES regions(region_id),
@@ -58,15 +74,22 @@ CREATE TABLE fields (
     area_ha         NUMERIC NOT NULL,
     soil_type       TEXT,
     irrigation_type TEXT,
-    geometry        TEXT,
+    -- Lat/lon stored as plain NUMERIC for MVP (no PostGIS in SQLite)
+    lat             NUMERIC,
+    lon             NUMERIC,
+    geometry        TEXT,                   -- GeoJSON string, optional
     is_synthetic    BOOLEAN DEFAULT 0,
     label_note      TEXT,
     created_at      TEXT DEFAULT CURRENT_TIMESTAMP,
     updated_at      TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX idx_fields_district ON fields(district_id);
-CREATE INDEX idx_fields_synthetic ON fields(is_synthetic);
+CREATE INDEX idx_fields_district   ON fields(district_id);
+CREATE INDEX idx_fields_synthetic  ON fields(is_synthetic);
+
+-- ──────────────────────────────────────────────
+-- Crops & Calendars
+-- ──────────────────────────────────────────────
 
 CREATE TABLE crops (
     crop_id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -87,6 +110,56 @@ CREATE TABLE crop_calendars (
     notes           TEXT,
     source_file     TEXT DEFAULT '05_Crop_Calendars/four_pilot_crops.md'
 );
+
+-- One active crop-season per field (supports future multi-crop)
+-- This is the Phase-2 addition that the Crop Agent reads.
+CREATE TABLE field_crops (
+    field_crop_id    INTEGER PRIMARY KEY AUTOINCREMENT,
+    field_id         INTEGER NOT NULL REFERENCES fields(field_id),
+    crop_id          INTEGER NOT NULL REFERENCES crops(crop_id),
+    variety          TEXT,
+    sowing_date      TEXT,                  -- ISO date
+    current_stage    TEXT,
+    recommendation_type TEXT,               -- maps to fertilizer_recommendations
+    target_yield_kg_ha NUMERIC,
+    is_active        BOOLEAN DEFAULT 1,
+    created_at       TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at       TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_field_crops_field  ON field_crops(field_id);
+CREATE INDEX idx_field_crops_active ON field_crops(field_id, is_active);
+
+-- Convenience view: latest active crop per field
+-- Used by orchestrator to load field state in one query.
+CREATE VIEW field_active_crop AS
+SELECT
+    f.field_id,
+    f.field_code,
+    f.area_ha,
+    f.soil_type,
+    f.irrigation_type,
+    f.lat,
+    f.lon,
+    f.region_id,
+    f.district_id,
+    f.taluka_id,
+    f.farmer_id,
+    f.is_synthetic,
+    fc.field_crop_id,
+    fc.crop_id          AS current_crop_id,
+    fc.variety          AS current_variety,
+    fc.sowing_date,
+    fc.current_stage,
+    fc.recommendation_type,
+    fc.target_yield_kg_ha
+FROM fields f
+LEFT JOIN field_crops fc
+    ON fc.field_id = f.field_id AND fc.is_active = 1;
+
+-- ──────────────────────────────────────────────
+-- Fertilizers
+-- ──────────────────────────────────────────────
 
 CREATE TABLE fertilizer_products (
     product_id      INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -113,8 +186,16 @@ CREATE TABLE fertilizer_recommendations (
     fym_t_ha        NUMERIC,
     stage_applicability TEXT,
     source_citation TEXT NOT NULL,
-    notes           TEXT
+    notes           TEXT,
+    -- CHECK constraints to guard against obviously wrong values
+    CHECK (n_kg_ha IS NULL  OR n_kg_ha  >= 0),
+    CHECK (p2o5_kg_ha IS NULL OR p2o5_kg_ha >= 0),
+    CHECK (k2o_kg_ha IS NULL  OR k2o_kg_ha  >= 0)
 );
+
+-- ──────────────────────────────────────────────
+-- Soil Tests & Fertilizer Applications
+-- ──────────────────────────────────────────────
 
 CREATE TABLE soil_tests (
     soil_test_id    INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -126,11 +207,20 @@ CREATE TABLE soil_tests (
     ph              NUMERIC,
     oc_percent      NUMERIC,
     ec_ds_m         NUMERIC,
-    source          TEXT DEFAULT 'SYNTHETIC',
+    moisture_percent NUMERIC,
+    micronutrients  TEXT,                   -- JSON string
+    source          TEXT DEFAULT 'SYNTHETIC',  -- 'lab'|'ocr'|'manual'|'SYNTHETIC'
+    ocr_confidence  NUMERIC,
+    original_file_path TEXT,
     is_synthetic    BOOLEAN DEFAULT 0,
     label_note      TEXT,
-    created_at      TEXT DEFAULT CURRENT_TIMESTAMP
+    created_at      TEXT DEFAULT CURRENT_TIMESTAMP,
+    -- CHECK: realistic agronomic bounds
+    CHECK (ph IS NULL OR (ph >= 3.0 AND ph <= 11.0)),
+    CHECK (oc_percent IS NULL OR oc_percent >= 0)
 );
+
+CREATE INDEX idx_soil_tests_field ON soil_tests(field_id, test_date DESC);
 
 CREATE TABLE applications (
     application_id  INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -143,8 +233,15 @@ CREATE TABLE applications (
     p2o5_supplied_kg_ha NUMERIC,
     k2o_supplied_kg_ha NUMERIC,
     notes           TEXT,
-    is_synthetic    BOOLEAN DEFAULT 0
+    is_synthetic    BOOLEAN DEFAULT 0,
+    CHECK (quantity_kg_ha IS NULL OR quantity_kg_ha >= 0)
 );
+
+CREATE INDEX idx_applications_field ON applications(field_id, application_date DESC);
+
+-- ──────────────────────────────────────────────
+-- Nutrient Ledger & Recommendations
+-- ──────────────────────────────────────────────
 
 CREATE TABLE nutrient_ledger_entries (
     ledger_id       INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -169,42 +266,101 @@ CREATE TABLE nutrient_ledger_entries (
     gap_p2o5_kg_ha      NUMERIC,
     gap_k2o_kg_ha       NUMERIC,
     calculation_notes   TEXT,
+    flags               TEXT,               -- JSON array of flag strings
+    confidence          TEXT,               -- HIGH|MEDIUM|LOW|ABSTAIN
     is_synthetic        BOOLEAN DEFAULT 0,
     created_at          TEXT DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX idx_ledger_field ON nutrient_ledger_entries(field_id, created_at DESC);
 
 CREATE TABLE recommendations (
     recommendation_id INTEGER PRIMARY KEY AUTOINCREMENT,
     field_id        INTEGER NOT NULL REFERENCES fields(field_id),
     ledger_id       INTEGER REFERENCES nutrient_ledger_entries(ledger_id),
     generated_at    TEXT DEFAULT CURRENT_TIMESTAMP,
-    plan_json       TEXT NOT NULL,
+    plan_json       TEXT NOT NULL,          -- full proof-carrying object (JSON)
     total_cost_estimate NUMERIC,
-    confidence      TEXT,
+    confidence      TEXT,                   -- HIGH|MEDIUM|LOW|ABSTAIN
     confidence_reason TEXT,
-    evidence_citations TEXT,
+    evidence_citations TEXT,                -- JSON array of citation strings
+    flags           TEXT,                   -- JSON array
     is_synthetic    BOOLEAN DEFAULT 0,
-    status          TEXT DEFAULT 'PROPOSED'
+    status          TEXT DEFAULT 'PROPOSED', -- PROPOSED|ABSTAINED|NO_FERTILIZER_NEEDED|SUPERSEDED
+    -- Phase-2: lifecycle tracking for Monitoring Agent
+    invalidated_at  TEXT,                   -- ISO timestamp when Monitoring Agent superseded this
+    superseded_by   INTEGER REFERENCES recommendations(recommendation_id),
+    CHECK (status IN ('PROPOSED','ABSTAINED','NO_FERTILIZER_NEEDED','SUPERSEDED'))
 );
+
+CREATE INDEX idx_recs_field_latest ON recommendations(field_id, generated_at DESC);
+
+-- ──────────────────────────────────────────────
+-- Weather Snapshots (Weather Agent)
+-- ──────────────────────────────────────────────
+
+CREATE TABLE weather_snapshots (
+    snapshot_id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    field_id            INTEGER NOT NULL REFERENCES fields(field_id),
+    fetched_at          TEXT NOT NULL,      -- ISO timestamp (UTC)
+    forecast_json       TEXT,               -- raw Open-Meteo JSON response
+    rainfall_probability NUMERIC,           -- max precipitation_probability_max (0-100)
+    rainfall_mm_next_7d  NUMERIC,           -- sum of precipitation_sum (mm)
+    heavy_rain_alert    BOOLEAN DEFAULT 0,
+    source              TEXT DEFAULT 'open-meteo',
+    created_at          TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_weather_field ON weather_snapshots(field_id, fetched_at DESC);
+
+-- ──────────────────────────────────────────────
+-- Events (Monitoring Agent event bus)
+-- ──────────────────────────────────────────────
+-- Stores every event the system emits. Monitoring Agent polls / reacts to these.
+-- Event types: SOIL_REPORT_UPDATED | WEATHER_FORECAST_CHANGED | HEAVY_RAIN_ALERT |
+--              CROP_STAGE_CHANGED | FERTILIZER_APPLIED | IRRIGATION_RECORDED |
+--              PLAN_CREATED | PLAN_INVALIDATED | RECOMMENDATION_RECALCULATED |
+--              EXPERT_OVERRIDE
+
+CREATE TABLE events (
+    event_id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_type      TEXT NOT NULL,
+    field_id        INTEGER REFERENCES fields(field_id),
+    payload         TEXT,                   -- JSON payload
+    actor           TEXT DEFAULT 'system',  -- system|farmer|agronomist
+    created_at      TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_events_field ON events(field_id, created_at DESC);
+CREATE INDEX idx_events_type  ON events(event_type, created_at DESC);
+
+-- ──────────────────────────────────────────────
+-- Alerts (human-visible notifications)
+-- ──────────────────────────────────────────────
 
 CREATE TABLE alerts (
     alert_id        INTEGER PRIMARY KEY AUTOINCREMENT,
     field_id        INTEGER REFERENCES fields(field_id),
     alert_type      TEXT NOT NULL,
-    severity        TEXT,
+    severity        TEXT,                   -- HIGH|MEDIUM|LOW
     message         TEXT,
     triggered_at    TEXT DEFAULT CURRENT_TIMESTAMP,
     resolved_at     TEXT,
-    related_recommendation_id INTEGER REFERENCES recommendations(recommendation_id)
+    related_recommendation_id INTEGER REFERENCES recommendations(recommendation_id),
+    CHECK (severity IN ('HIGH','MEDIUM','LOW',NULL))
 );
+
+-- ──────────────────────────────────────────────
+-- Audit Log
+-- ──────────────────────────────────────────────
 
 CREATE TABLE audit_log (
     audit_id        INTEGER PRIMARY KEY AUTOINCREMENT,
-    entity_type     TEXT NOT NULL,
+    entity_type     TEXT NOT NULL,          -- 'recommendation'|'soil_test'|'field_crop'|…
     entity_id       INTEGER,
-    action          TEXT NOT NULL,
-    actor           TEXT,
-    old_value       TEXT,
-    new_value       TEXT,
+    action          TEXT NOT NULL,          -- 'CREATE'|'UPDATE'|'SUPERSEDE'|…
+    actor           TEXT DEFAULT 'system',  -- system|farmer|agronomist
+    old_value       TEXT,                   -- JSON
+    new_value       TEXT,                   -- JSON
     created_at      TEXT DEFAULT CURRENT_TIMESTAMP
 );
