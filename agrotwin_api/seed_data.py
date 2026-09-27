@@ -241,13 +241,17 @@ def seed_fields_and_soil_tests(conn, region_id, district_ids, crop_ids):
             taluka_id = taluka_lookup.get((row["taluka"], district_id))
             crop_code = row["crop"].upper()
 
+            # Read optional lat/lon from CSV (added in Priority-1 pass)
+            lat_val = float(row["lat_deg"]) if row.get("lat_deg") else None
+            lon_val = float(row["lon_deg"]) if row.get("lon_deg") else None
+
             cur.execute(
                 """INSERT INTO fields
                    (region_id, district_id, taluka_id, field_code, area_ha,
-                    irrigation_type, is_synthetic, label_note)
-                   VALUES (?,?,?,?,?,?,?,?)""",
+                    irrigation_type, lat, lon, is_synthetic, label_note)
+                   VALUES (?,?,?,?,?,?,?,?,?,?)""",
                 (region_id, district_id, taluka_id, rid, float(row["field_area_ha"]),
-                 row["irrigation_type"], True, row["label"]),
+                 row["irrigation_type"], lat_val, lon_val, True, row["label"]),
             )
             field_id = cur.lastrowid
             field_ids[rid] = {"field_id": field_id, "crop_code": crop_code,

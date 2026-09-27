@@ -193,7 +193,7 @@ def write_ledger_result(conn: sqlite3.Connection, result: dict) -> int | None:
             result.get("required", {}).get("K2O"),
             result.get("citation", ""),
             result.get("soil", {}).get("N"),
-            result.get("soil", {}).get("P_proxy"),
+            result.get("soil", {}).get("P_kg_ha"),
             result.get("soil", {}).get("K"),
             result.get("gap", {}).get("N"),
             result.get("gap", {}).get("P2O5"),
