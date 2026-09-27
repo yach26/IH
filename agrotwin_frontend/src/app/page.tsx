@@ -1,21 +1,28 @@
-"use client";
+import React from 'react';
+import HeroSection from '@/components/landing/HeroSection';
+import CapabilityStrip from '@/components/landing/CapabilityStrip';
+import DigitalTwinSection from '@/components/landing/DigitalTwinSection';
+import DecisionLoopSection from '@/components/landing/DecisionLoopSection';
+import ProofSection from '@/components/landing/ProofSection';
+import WhatIfPreview from '@/components/landing/WhatIfPreview';
+import PilotRegionsSection from '@/components/landing/PilotRegionsSection';
+import HumanOversightSection from '@/components/landing/HumanOversightSection';
+import FinalCTA from '@/components/landing/FinalCTA';
+import LandingFooter from '@/components/landing/LandingFooter';
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
-
-export default function Home() {
-  const router = useRouter();
-
-  useEffect(() => {
-    router.replace("/dashboard");
-  }, [router]);
-
+export default function LandingPage() {
   return (
-    <div className="min-h-screen flex items-center justify-center">
-      <div className="text-center">
-        <div className="inline-block animate-spin w-8 h-8 border-4 border-agri-primary border-t-transparent rounded-full mb-3"></div>
-        <p className="text-sm text-ink-secondary">Redirecting to Dashboard...</p>
-      </div>
+    <div className="flex-1 flex flex-col min-h-screen bg-[#FDFBF7] font-sans selection:bg-[#0F4D35] selection:text-white">
+      <HeroSection />
+      <CapabilityStrip />
+      <DigitalTwinSection />
+      <DecisionLoopSection />
+      <ProofSection />
+      <WhatIfPreview />
+      <PilotRegionsSection />
+      <HumanOversightSection />
+      <FinalCTA />
+      <LandingFooter />
     </div>
   );
 }
