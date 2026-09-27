@@ -61,14 +61,27 @@ This runs the full end-to-end demo: seed -> OCR -> recommend -> heavy-rain -> wh
 | Nutrient Ledger | **Real** | Deterministic DAP->Urea->MOP calculation |
 | Fertilizer quantities | **Real** | Always from Ledger, never from LLM |
 | RDF values | **Real** | From published MAHAFPDF/ICAR documents |
-| Soil test data (8 fields) | **Synthetic** | Calibrated to published averages |
-| Yield model training data | **Synthetic** | Calibrated to published averages |
+| Soil test data | **Real** | From Polgaon village SHC dataset (2016-2024) |
+| District nutrient stats | **Real** | Official SHC dashboards for Kolhapur (2023-26) |
+| Farmer survey data | **Real** | 47 farmers from Shirol taluka |
+| Yield model training data | **Synthetic** | Calibrated to published averages; being validated against real distributions |
 | Yield model predictions | **Real** | XGBoost inference, but trained on synthetic data |
 | OCR pipeline | **Real** | EasyOCR + regex + LLM refinement |
 | SHC test fixtures | **Synthetic** | 5 text-based fixtures for testing |
 | LLM narratives | **Optional** | Groq/xAI, degrades gracefully |
 | Weather data | **Real** | Open-Meteo (free, no key needed) |
 | RAG documents | **Real** | Published agricultural PDFs |
+
+## Real Data Sources
+
+The system now uses real Kolhapur data from the following sources:
+
+- **Polgaon Soil Health Dataset** — 100+ real soil test records (2016-2024) with N, P, K, pH, OC, micronutrients, GPS coordinates
+- **SHC Nutrient Dashboards** — Official block-wise nutrient distribution for all 12 Kolhapur blocks (cycles 2023-24, 2024-25, 2025-26)
+- **Shirol Farmer Survey** — 47 real farmer records with land area, crop (mostly Sugarcane), fertilizer practices, irrigation source
+- **Village Geocodes** — 20 villages in Shirol area with lat/lon
+
+See `agrotwin_api/data/real_kolhapur/README_REAL_DATA.md` for details.
 
 ## Environment Variables
 

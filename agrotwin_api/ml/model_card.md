@@ -73,8 +73,8 @@ The model was trained on **synthetic data** generated to match published distric
 
 ## Limitations & Risks
 
-### 1. Synthetic Training Data
-The model has never seen real farm-level data. Its predictions are calibrated to match published averages, not to capture the complexity of real farms (pest pressure, disease, micro-variability in soil, timing of operations, etc.).
+### 1. Synthetic Training Data (with Real Data Calibration)
+The model was originally trained on synthetic data calibrated to published district/state yield averages. We now have real Kolhapur soil test distributions (from Polgaon village, 2016-2024) and official Soil Health Card dashboard data (2023-24, 2024-25, 2025-26 cycles). The model is being calibrated against these real distributions, but **real paired (soil + fertilizer + yield) farm records are still limited**. The model has not been fully retrained on real yield data.
 
 ### 2. Extrapolation Risk
 If a fertilizer plan applies nutrients at rates outside 40–130% of the Recommended Dose of Fertilizer (RDF), the model's prediction is an **extrapolation** beyond its training range. The API response includes an `extrapolation` boolean flag and a caveat when this occurs.
@@ -90,6 +90,21 @@ For Jalgaon BANANA and COTTON, soil-nutrient ranges in the training data were ex
 
 ### 6. No Farmer-Declared Target Yield
 The model bands predictions relative to the crop's training-set mean, not relative to a farmer-declared target yield (which is not yet in scope).
+
+## Real Data Integration
+
+The system now incorporates real Kolhapur data:
+
+| Data Source | Description | Location |
+|-------------|-------------|----------|
+| Polgaon Soil Health Dataset | 100+ real soil test records (2016-2024) with N, P, K, pH, OC, micronutrients | `data/real_kolhapur/soil_tests/polgaon_soil_health.csv` |
+| SHC Nutrient Dashboard 2023-24 | Block-wise nutrient distribution for all 12 Kolhapur blocks | `data/real_kolhapur/nutrient_dashboard/2023-24.csv` |
+| SHC Nutrient Dashboard 2024-25 | Block-wise nutrient distribution for all 12 Kolhapur blocks | `data/real_kolhapur/nutrient_dashboard/2024-25.csv` |
+| SHC Nutrient Dashboard 2025-26 | Block-wise nutrient distribution for all 12 Kolhapur blocks | `data/real_kolhapur/nutrient_dashboard/2025-26.csv` |
+| Shirol Farmer Survey | 47 real farmer records with land area, crop, fertilizer practices | `data/real_kolhapur/farmer_survey/shirol_farmer_survey.csv` |
+| Village Geocodes | 20 villages in Shirol area with lat/lon | `data/real_kolhapur/villages/village_geocode.csv` |
+
+The `get_kolhapur_soil_context()` helper in `app/core/kolhapur_context.py` provides regional grounding for recommendations.
 
 ## Confidence Score
 

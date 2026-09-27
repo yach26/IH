@@ -239,41 +239,70 @@ def seed_fields_and_soil_tests(conn, region_id, district_ids, crop_ids):
         taluka_lookup[(name, did)] = tid
 
     field_ids = {}
-    with open(os.path.join(DATA_DIR, "synthetic_records.csv")) as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            rid = row["record_id"]
-            district_id = district_ids[row["district"]]
-            taluka_id = taluka_lookup.get((row["taluka"], district_id))
-            crop_code = row["crop"].upper()
 
-            # Read optional lat/lon from CSV (added in Priority-1 pass)
-            lat_val = float(row["lat_deg"]) if row.get("lat_deg") else None
-            lon_val = float(row["lon_deg"]) if row.get("lon_deg") else None
+    # Try to load real soil data from Polgaon dataset first
+    real_data_path = os.path.join(DATA_DIR, "real_kolhapur", "soil_tests", "polgaon_soil_health.csv")
+    use_real_data = os.path.exists(real_data_path)
+
+    if use_real_data:
+        # Load real soil test data from Polgaon
+        with open(real_data_path, encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            real_rows = []
+            for row in reader:
+                # Only use rows with complete N, P, K, pH, OC
+                if (row.get("N") and row.get("P") and row.get("K") and
+                    row.get("pH") and row.get("OC")):
+                    try:
+                        n = float(row["N"])
+                        p = float(row["P"])
+                        k = float(row["K"])
+                        ph = float(row["pH"])
+                        oc = float(row["OC"])
+                        if n > 0 and p > 0 and k > 0 and 3 <= ph <= 11 and 0 <= oc <= 10:
+                            real_rows.append(row)
+                    except (ValueError, TypeError):
+                        continue
+
+        # Take up to 8 real rows
+        selected_rows = real_rows[:8]
+
+        for idx, row in enumerate(selected_rows):
+            rid = f"REAL-{idx+1:03d}"
+            district_id = district_ids["Kolhapur"]
+            taluka_id = taluka_lookup.get(("Shirol", district_id))
+            crop_code = "SUGARCANE"  # Most common crop in the region
+
+            lat_val = float(row["Latitude"]) if row.get("Latitude") else None
+            lon_val = float(row["Longitude"]) if row.get("Longitude") else None
+            land_area = float(row["Land Area"]) if row.get("Land Area") else 2.0
 
             cur.execute(
                 """INSERT INTO fields
                    (region_id, district_id, taluka_id, field_code, area_ha,
                     irrigation_type, lat, lon, is_synthetic, label_note)
                    VALUES (?,?,?,?,?,?,?,?,?,?)""",
-                (region_id, district_id, taluka_id, rid, float(row["field_area_ha"]),
-                 row["irrigation_type"], lat_val, lon_val, True, row["label"]),
+                (region_id, district_id, taluka_id, rid, land_area,
+                 "Irrigated", lat_val, lon_val, False,
+                 f"Real soil data from Polgaon - {row.get('Farmer Name', 'Unknown')}"),
             )
             field_id = cur.lastrowid
             field_ids[rid] = {"field_id": field_id, "crop_code": crop_code,
-                               "current_stage": row["current_stage"], "row": row}
+                               "current_stage": "GRAND_GROWTH", "row": row}
 
             cur.execute(
                 """INSERT INTO soil_tests
                    (field_id, test_date, n_kg_ha, p_kg_ha, k_kg_ha, ph, oc_percent,
                     source, is_synthetic, label_note)
                    VALUES (?,?,?,?,?,?,?,?,?,?)""",
-                (field_id, row["soil_test_date"], float(row["N_kg_ha"]),
-                 float(row["P_kg_ha"]), float(row["K_kg_ha"]), float(row["pH"]),
-                 float(row["OC_percent"]), "SYNTHETIC", True, row["label"]),
+                (field_id, row.get("Date of Sample Taken", "2024-01-01"),
+                 float(row["N"]), float(row["P"]), float(row["K"]),
+                 float(row["pH"]), float(row["OC"]),
+                 "real_kolhapur_shc", False,
+                 f"Real SHC data - Polgaon"),
             )
 
-            rec_type = RECOMMENDATION_TYPE_BY_RECORD.get(rid, "FULL_SEASON")
+            rec_type = "PRE_SEASONAL"
             cur.execute(
                 """INSERT INTO field_crops
                    (field_id, crop_id, variety, sowing_date, current_stage,
@@ -282,13 +311,64 @@ def seed_fields_and_soil_tests(conn, region_id, district_ids, crop_ids):
                 (
                     field_id,
                     crop_ids[crop_code],
-                    row.get("variety"),
-                    row.get("sowing_date"),
-                    row.get("current_stage"),
+                    None,
+                    "2024-06-01",
+                    "GRAND_GROWTH",
                     rec_type,
                     True,
                 ),
             )
+    else:
+        # Fallback to synthetic data
+        with open(os.path.join(DATA_DIR, "synthetic_records.csv")) as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                rid = row["record_id"]
+                district_id = district_ids[row["district"]]
+                taluka_id = taluka_lookup.get((row["taluka"], district_id))
+                crop_code = row["crop"].upper()
+
+                lat_val = float(row["lat_deg"]) if row.get("lat_deg") else None
+                lon_val = float(row["lon_deg"]) if row.get("lon_deg") else None
+
+                cur.execute(
+                    """INSERT INTO fields
+                       (region_id, district_id, taluka_id, field_code, area_ha,
+                        irrigation_type, lat, lon, is_synthetic, label_note)
+                       VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                    (region_id, district_id, taluka_id, rid, float(row["field_area_ha"]),
+                     row["irrigation_type"], lat_val, lon_val, True, row["label"]),
+                )
+                field_id = cur.lastrowid
+                field_ids[rid] = {"field_id": field_id, "crop_code": crop_code,
+                                   "current_stage": row["current_stage"], "row": row}
+
+                cur.execute(
+                    """INSERT INTO soil_tests
+                       (field_id, test_date, n_kg_ha, p_kg_ha, k_kg_ha, ph, oc_percent,
+                        source, is_synthetic, label_note)
+                       VALUES (?,?,?,?,?,?,?,?,?,?)""",
+                    (field_id, row["soil_test_date"], float(row["N_kg_ha"]),
+                     float(row["P_kg_ha"]), float(row["K_kg_ha"]), float(row["pH"]),
+                     float(row["OC_percent"]), "SYNTHETIC", True, row["label"]),
+                )
+
+                rec_type = RECOMMENDATION_TYPE_BY_RECORD.get(rid, "FULL_SEASON")
+                cur.execute(
+                    """INSERT INTO field_crops
+                       (field_id, crop_id, variety, sowing_date, current_stage,
+                        recommendation_type, is_active)
+                       VALUES (?,?,?,?,?,?,?)""",
+                    (
+                        field_id,
+                        crop_ids[crop_code],
+                        row.get("variety"),
+                        row.get("sowing_date"),
+                        row.get("current_stage"),
+                        rec_type,
+                        True,
+                    ),
+                )
     conn.commit()
     return field_ids
 
