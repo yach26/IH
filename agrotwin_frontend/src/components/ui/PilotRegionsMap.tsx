@@ -26,7 +26,8 @@ export default function PilotRegionsMap({ className = "w-full h-[420px]" }: Pilo
   const [regions, setRegions] = React.useState<PilotRegion[]>(PILOT_REGIONS);
 
   useEffect(() => {
-    fetch('http://localhost:8000/fields')
+    const apiHost = window.location.hostname;
+    fetch(`http://${apiHost}:8000/fields`)
       .then(r => r.json())
       .then((data: any[]) => {
         if (data && data.length > 0) {

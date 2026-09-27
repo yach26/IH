@@ -14,7 +14,8 @@ export default function HeroSection() {
   } | null>(null);
 
   React.useEffect(() => {
-    fetch('http://localhost:8000/fields/REAL-001/twin')
+    const apiHost = window.location.hostname;
+    fetch(`http://${apiHost}:8000/fields/REAL-001/twin`)
       .then(r => r.json())
       .then(data => setLiveField({
         fieldId: data.fieldId,

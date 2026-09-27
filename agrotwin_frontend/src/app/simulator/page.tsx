@@ -179,7 +179,8 @@ export default function SimulatorPage() {
 
   // Fetch the real baseline from backend twin API whenever active field changes
   useEffect(() => {
-    fetch(`http://localhost:8000/fields/${activeFieldId}/twin`)
+    const apiHost = window.location.hostname;
+    fetch(`http://${apiHost}:8000/fields/${activeFieldId}/twin`)
       .then(r => r.json())
       .then(data => {
         // Use the gap N as the required target to apply
@@ -219,6 +220,7 @@ export default function SimulatorPage() {
     applicationTiming: "On time",
     plantingShift: 0,
   }));
+  const [mlPrediction, setMlPrediction] = useState<{ yieldBand: string; confidence: string; cost: number | string } | null>(null);
   const [isSimulating, setIsSimulating] = useState(false);
 
   useEffect(() => {
@@ -226,8 +228,9 @@ export default function SimulatorPage() {
       setIsSimulating(true);
       const baseline = effectiveBaseline;
       const deltaPct = ((nKgHa - baseline) / baseline) * 100;
+      const apiHost = window.location.hostname;
       
-      fetch(`http://localhost:8000/fields/${activeFieldId}/what-if`, {
+      fetch(`http://${apiHost}:8000/fields/${activeFieldId}/what-if`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -248,8 +251,9 @@ export default function SimulatorPage() {
            waterStress: sig.waterStress === 'high' ? 'High' : (sig.waterStress === 'moderate' ? 'Moderate' : 'Low'),
            nutrientStress: sig.nutrientSufficiency === 'suboptimal' ? 'High' : 'Low',
            overallState: sig.vigor === 'below-average' ? 'High Stress' : 'Healthy',
-           explanation: `AI Yield Projection: ${sim.yieldBand}. Confidence: ${sim.confidence}. Projected Cost: ₹${sim.cost}.`
+           explanation: `AI Yield Projection updated.`
          });
+         setMlPrediction({ yieldBand: sim.yieldBand, confidence: sim.confidence, cost: sim.cost });
          setIsSimulating(false);
       })
       .catch(e => {
@@ -262,6 +266,7 @@ export default function SimulatorPage() {
            applicationTiming: applicationTiming as "Early" | "On time" | "Delayed",
            plantingShift,
          }));
+         setMlPrediction(null);
          setIsSimulating(false);
       });
     }, 400); // 400ms debounce
@@ -507,10 +512,36 @@ export default function SimulatorPage() {
           </div>
 
           <div className="bg-white rounded-md border border-[#e5e0d8] p-5">
-            <p className="text-xs font-bold text-gray-800 mb-2">What changed?</p>
-            <p className="text-[13px] text-gray-600 leading-relaxed">
-              {result.explanation}
-            </p>
+            <div className="flex items-center gap-2 mb-4">
+              <svg className="w-5 h-5 text-purple-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+              </svg>
+              <p className="text-sm font-bold text-gray-900">XGBoost ML Prediction</p>
+            </div>
+            
+            {mlPrediction ? (
+              <div className="space-y-4">
+                <div className="bg-purple-50 rounded-lg p-3 border border-purple-100">
+                  <p className="text-[10px] text-purple-800 font-semibold uppercase tracking-wider mb-1">Projected Yield Band</p>
+                  <p className="text-2xl font-bold text-purple-900">{mlPrediction.yieldBand}</p>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
+                    <p className="text-[10px] text-gray-500 font-medium uppercase tracking-wider mb-1">Confidence</p>
+                    <p className={`text-sm font-bold ${mlPrediction.confidence === 'HIGH' ? 'text-green-600' : mlPrediction.confidence === 'MEDIUM' ? 'text-amber-600' : 'text-gray-600'}`}>{mlPrediction.confidence}</p>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-3 border border-gray-100">
+                    <p className="text-[10px] text-gray-500 font-medium uppercase tracking-wider mb-1">Est. Cost</p>
+                    <p className="text-sm font-bold text-gray-900">₹{mlPrediction.cost.toLocaleString()}</p>
+                  </div>
+                </div>
+                <p className="text-[10px] text-gray-400 italic text-center mt-2">Prediction generated via AgroTwin Model Pipeline</p>
+              </div>
+            ) : (
+              <p className="text-[13px] text-gray-600 leading-relaxed">
+                {result.explanation}
+              </p>
+            )}
           </div>
         </aside>
       </div>
