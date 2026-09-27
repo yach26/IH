@@ -94,3 +94,24 @@ class EventIn(BaseModel):
         }
     )
     actor: str = "demo"
+
+class FarmerCreateRequest(BaseModel):
+    """Create a new farmer. region_id must already exist."""
+    region_id: int
+    full_name: str | None = None
+    mobile: str | None = None
+    preferred_lang: str = "mr"
+
+
+class FieldCreateRequest(BaseModel):
+    """Create a new field. region_id and district_id must already exist."""
+    region_id: int
+    district_id: int
+    taluka_id: int | None = None
+    farmer_id: int | None = None
+    field_code: str | None = None
+    area_ha: float
+    soil_type: str | None = None
+    irrigation_type: str | None = None
+    lat: float | None = None
+    lon: float | None = None
