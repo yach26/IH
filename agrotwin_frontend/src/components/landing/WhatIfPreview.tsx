@@ -86,10 +86,8 @@ export default function WhatIfPreview() {
                     title="Rice Plant" 
                     className="w-full h-full" 
                     frameBorder="0" 
-                    allowFullScreen 
-                    mozallowfullscreen="true" 
-                    webkitallowfullscreen="true" 
-                    allow="autoplay; fullscreen; xr-spatial-tracking" 
+                    allowFullScreen
+                    allow="autoplay; fullscreen; xr-spatial-tracking"
                     xr-spatial-tracking="true" 
                     execution-while-out-of-viewport="true" 
                     execution-while-not-rendered="true" 

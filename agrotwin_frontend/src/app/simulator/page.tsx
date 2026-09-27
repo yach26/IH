@@ -1,9 +1,11 @@
 "use client";
 
-import React, { useState, useEffect, startTransition } from "react";
+import React, { useState, useEffect, startTransition, Suspense } from "react";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { simulateCrop } from "@/simulation/simulationEngine";
 import { CROPS } from "@/simulation/cropConfigs";
 import { CropVisualState } from "@/simulation/types";
+import { whatIf as apiWhatIf, getTwin } from "@/lib/api";
 
 // ─── Sub-components ────────────────────────────────────────────────────────────
 
@@ -161,27 +163,52 @@ function GrowthStageTimeline({
 }
 
 // ─── Main Page ─────────────────────────────────────────────────────────────────
-export default function SimulatorPage() {
-  const [activeCropId, setActiveCropId] = useState<string>("sugarcane");
+const CROP_TO_FIELD: Record<string, string> = {
+  sugarcane: 'REAL-001',
+  banana: 'REAL-002',
+  cotton: 'REAL-003',
+  rice: 'REAL-004'
+};
+const FIELD_TO_CROP: Record<string, string> = Object.fromEntries(
+  Object.entries(CROP_TO_FIELD).map(([crop, field]) => [field, crop])
+);
+
+function SimulatorContent() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const fieldParam = searchParams.get('field');
+
+  const [activeCropId, setActiveCropId] = useState<string>(
+    (fieldParam && FIELD_TO_CROP[fieldParam]) || "sugarcane"
+  );
+  // A ?field= that doesn't correspond to one of the 4 demo crop tabs is still
+  // the authoritative field to fetch — the crop tabs are a visual convenience,
+  // not the source of truth for which field is selected.
+  const [fieldOverride, setFieldOverride] = useState<string | null>(fieldParam);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [iframeKey, setIframeKey] = useState(0);
   const [realBaseline, setRealBaseline] = useState<number | null>(null);
   const [realCitation, setRealCitation] = useState<string>('');
   const [realFieldInfo, setRealFieldInfo] = useState<{ crop: string; stage: string; } | null>(null);
+  const [twinError, setTwinError] = useState<string | null>(null);
 
-  const CROP_TO_FIELD: Record<string, string> = {
-    sugarcane: 'REAL-001',
-    banana: 'REAL-002',
-    cotton: 'REAL-003',
-    rice: 'REAL-004'
-  };
-  const activeFieldId = CROP_TO_FIELD[activeCropId] || 'REAL-001';
+  const activeFieldId = fieldOverride || CROP_TO_FIELD[activeCropId] || 'REAL-001';
+
+  function selectCrop(cropId: string) {
+    setActiveCropId(cropId);
+    setFieldOverride(null);
+    const nextField = CROP_TO_FIELD[cropId];
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('field', nextField);
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  }
 
   // Fetch the real baseline from backend twin API whenever active field changes
   useEffect(() => {
-    fetch(`http://localhost:8000/fields/${activeFieldId}/twin`)
-      .then(r => r.json())
+    getTwin(activeFieldId)
       .then(data => {
+        setTwinError(null);
         // Use the gap N as the required target to apply
         const gap = data.currentPlan?.soilGap;
         if (gap?.N) {
@@ -193,7 +220,9 @@ export default function SimulatorPage() {
         setRealCitation(data.currentPlan?.citation || '');
         setRealFieldInfo({ crop: data.crop, stage: data.growthStage });
       })
-      .catch(() => null);
+      .catch((err) => {
+        setTwinError(err instanceof Error ? err.message : 'Could not load field data');
+      });
   }, [activeFieldId, activeCropId]);
 
   // Inputs
@@ -205,10 +234,15 @@ export default function SimulatorPage() {
   const [irrigation, setIrrigation] = useState<"Low" | "Normal" | "High">("Normal");
   const [plantingShift, setPlantingShift] = useState(0);
 
-  // Sync slider to real baseline when it loads
+  // Sync slider to real baseline once it arrives from the backend (intentional
+  // one-way sync from fetched data into local editable slider state, not a
+  // render-derivable value — eslint-plugin-react-hooks flags this pattern by
+  // default even when correct).
+  /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (realBaseline !== null) setNKgHa(realBaseline);
   }, [realBaseline]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Derived state: now fetched from backend with local fallback
   const [result, setResult] = useState<CropVisualState>(() => simulateCrop({
@@ -220,53 +254,51 @@ export default function SimulatorPage() {
     plantingShift: 0,
   }));
   const [isSimulating, setIsSimulating] = useState(false);
+  const [usingLocalFallback, setUsingLocalFallback] = useState(false);
 
   useEffect(() => {
     const handler = setTimeout(() => {
       setIsSimulating(true);
       const baseline = effectiveBaseline;
       const deltaPct = ((nKgHa - baseline) / baseline) * 100;
-      
-      fetch(`http://localhost:8000/fields/${activeFieldId}/what-if`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fertilizer_delta_pct: deltaPct,
-          rainfall_mm: rainfallPct > 0 ? 60 : (rainfallPct < 0 ? 0 : 20)
+
+      apiWhatIf(activeFieldId, {
+        fertilizer_delta_pct: deltaPct,
+        rainfall_mm: rainfallPct > 0 ? 60 : (rainfallPct < 0 ? 0 : 20),
+      })
+        .then((data) => {
+          const sim = data.simulated;
+          const sig = sim.modelSignals;
+
+          setUsingLocalFallback(false);
+          setResult({
+            stage: sig.growthStage,
+            stageProgress: 0.5,
+            vigor: sig.vigor === 'below-average' ? 'Poor' : 'Excellent',
+            leafCondition: sig.nutrientSufficiency === 'suboptimal' ? 'Yellowing' : 'Healthy',
+            waterStress: sig.waterStress === 'high' ? 'High' : (sig.waterStress === 'moderate' ? 'Moderate' : 'Low'),
+            nutrientStress: sig.nutrientSufficiency === 'suboptimal' ? 'High' : 'Low',
+            overallState: sig.vigor === 'below-average' ? 'High Stress' : 'Healthy',
+            explanation: `AI Yield Projection: ${sim.yieldBand}. Confidence: ${sim.confidence}. Projected Cost: ₹${sim.cost}.`
+          });
+          setIsSimulating(false);
         })
-      })
-      .then(r => r.json())
-      .then(data => {
-         const sim = data.simulated;
-         const sig = sim.modelSignals;
-         
-         setResult({
-           stage: sig.growthStage,
-           stageProgress: 0.5,
-           vigor: sig.vigor === 'below-average' ? 'Poor' : 'Excellent',
-           leafCondition: sig.nutrientSufficiency === 'suboptimal' ? 'Yellowing' : 'Healthy',
-           waterStress: sig.waterStress === 'high' ? 'High' : (sig.waterStress === 'moderate' ? 'Moderate' : 'Low'),
-           nutrientStress: sig.nutrientSufficiency === 'suboptimal' ? 'High' : 'Low',
-           overallState: sig.vigor === 'below-average' ? 'High Stress' : 'Healthy',
-           explanation: `AI Yield Projection: ${sim.yieldBand}. Confidence: ${sim.confidence}. Projected Cost: ₹${sim.cost}.`
-         });
-         setIsSimulating(false);
-      })
-      .catch(e => {
-         console.error("Backend failed, falling back to local simulation:", e);
-         setResult(simulateCrop({
-           cropId: activeCropId,
-           fertilizer: nKgHa,
-           rainfallChange: rainfallPct,
-           irrigation: irrigation as "Low" | "Normal" | "High",
-           applicationTiming: applicationTiming as "Early" | "On time" | "Delayed",
-           plantingShift,
-         }));
-         setIsSimulating(false);
-      });
+        .catch((e) => {
+          console.error("Backend what-if call failed, falling back to local simulation:", e);
+          setUsingLocalFallback(true);
+          setResult(simulateCrop({
+            cropId: activeCropId,
+            fertilizer: nKgHa,
+            rainfallChange: rainfallPct,
+            irrigation: irrigation as "Low" | "Normal" | "High",
+            applicationTiming: applicationTiming as "Early" | "On time" | "Delayed",
+            plantingShift,
+          }));
+          setIsSimulating(false);
+        });
     }, 400); // 400ms debounce
     return () => clearTimeout(handler);
-  }, [activeCropId, nKgHa, rainfallPct, irrigation, applicationTiming, plantingShift]);
+  }, [activeCropId, activeFieldId, effectiveBaseline, nKgHa, rainfallPct, irrigation, applicationTiming, plantingShift]);
 
   // Reset inputs when crop changes
   useEffect(() => {
@@ -316,7 +348,12 @@ export default function SimulatorPage() {
               </span>
               {realFieldInfo && (
                 <span className="px-2 py-0.5 bg-green-50 text-green-700 text-[9px] rounded font-medium border border-green-200">
-                  Live · {realFieldInfo.crop} · {realFieldInfo.stage}
+                  Live · {realFieldInfo.crop} · {realFieldInfo.stage} · {activeFieldId}
+                </span>
+              )}
+              {twinError && (
+                <span className="px-2 py-0.5 bg-red-50 text-red-700 text-[9px] rounded font-medium border border-red-200">
+                  ⚠ Could not load field data: {twinError}
                 </span>
               )}
             </div>
@@ -338,7 +375,7 @@ export default function SimulatorPage() {
             {Object.values(CROPS).map((c) => (
               <button
                 key={c.id}
-                onClick={() => setActiveCropId(c.id)}
+                onClick={() => selectCrop(c.id)}
                 className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-sm text-sm font-medium border transition-colors whitespace-nowrap ${
                   activeCropId === c.id
                     ? "bg-[#0F4D35] text-white border-[#0F4D35]"
@@ -507,7 +544,14 @@ export default function SimulatorPage() {
           </div>
 
           <div className="bg-white rounded-md border border-[#e5e0d8] p-5">
-            <p className="text-xs font-bold text-gray-800 mb-2">What changed?</p>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-bold text-gray-800">What changed?</p>
+              {usingLocalFallback && (
+                <span className="text-[9px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">
+                  Local estimate — backend unavailable
+                </span>
+              )}
+            </div>
             <p className="text-[13px] text-gray-600 leading-relaxed">
               {result.explanation}
             </p>
@@ -543,5 +587,13 @@ export default function SimulatorPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function SimulatorPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#FDFBF7] flex items-center justify-center text-sm text-gray-500">Loading…</div>}>
+      <SimulatorContent />
+    </Suspense>
   );
 }

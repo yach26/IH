@@ -1,20 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 import LandingNav from "@/components/landing/LandingNav";
 
 const navLinks = [
-  { name: "Overview",       href: "/"              },
-  { name: "Farm",           href: "/dashboard"     },
-  { name: "Simulator",      href: "/simulator"     },
-  { name: "Insights",       href: "/insights"      },
-  { name: "Command Center", href: "/command-center"},
+  { name: "Overview",       href: "/"              , carryField: false },
+  { name: "Farm",           href: "/dashboard"     , carryField: true  },
+  { name: "Simulator",      href: "/simulator"     , carryField: true  },
+  { name: "Upload",         href: "/upload"        , carryField: true  },
+  { name: "Insights",       href: "/insights"      , carryField: false },
+  { name: "Command Center", href: "/command-center", carryField: false },
 ];
 
-export default function TopNavigation() {
+function TopNavigationInner() {
   const pathname = usePathname();
   const router   = useRouter();
+  const searchParams = useSearchParams();
+  const field = searchParams.get("field");
 
   if (pathname === "/") {
     return <LandingNav />;
@@ -43,10 +47,13 @@ export default function TopNavigation() {
               const isActive =
                 pathname === link.href ||
                 (link.href !== "/" && pathname.startsWith(link.href));
+              const href = link.carryField && field
+                ? `${link.href}?field=${encodeURIComponent(field)}`
+                : link.href;
               return (
                 <Link
                   key={link.name}
-                  href={link.href}
+                  href={href}
                   className={`
                     relative px-3 py-2 rounded-md transition-colors duration-200
                     ${isActive
@@ -91,5 +98,13 @@ export default function TopNavigation() {
         </div>
       </div>
     </header>
+  );
+}
+
+export default function TopNavigation() {
+  return (
+    <Suspense fallback={null}>
+      <TopNavigationInner />
+    </Suspense>
   );
 }

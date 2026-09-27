@@ -28,7 +28,7 @@ export default function PilotRegionsMap({ className = "w-full h-[420px]" }: Pilo
   useEffect(() => {
     fetch('http://localhost:8000/fields')
       .then(r => r.json())
-      .then((data: any[]) => {
+      .then((data: { field_code?: string; lat?: number; lon?: number; crop_code?: string }[]) => {
         if (data && data.length > 0) {
           const dynamicRegions = data.map(d => ({
             name: d.field_code || "Field",

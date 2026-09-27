@@ -42,19 +42,19 @@ export function CropModel({ cropType, vigor, confidence }: CropModelProps) {
   if (cropType === 'Banana') {
     embedContent = (
       <div className="sketchfab-embed-wrapper w-full h-full relative z-0">
-        <iframe title="Banana Tree" className="w-full h-full" frameBorder="0" allowFullScreen mozallowfullscreen="true" webkitallowfullscreen="true" allow="autoplay; fullscreen; xr-spatial-tracking" xr-spatial-tracking="true" execution-while-out-of-viewport="true" execution-while-not-rendered="true" web-share="true" src="https://sketchfab.com/models/5cb46e64d7fc40978c3d6798017eced1/embed"> </iframe>
+        <iframe title="Banana Tree" className="w-full h-full" frameBorder="0" allowFullScreen allow="autoplay; fullscreen; xr-spatial-tracking" xr-spatial-tracking="true" execution-while-out-of-viewport="true" execution-while-not-rendered="true" web-share="true" src="https://sketchfab.com/models/5cb46e64d7fc40978c3d6798017eced1/embed"> </iframe>
       </div>
     );
   } else if (cropType === 'Rice') {
     embedContent = (
       <div className="sketchfab-embed-wrapper w-full h-full relative z-0">
-        <iframe title="Rice Plant" className="w-full h-full" frameBorder="0" allowFullScreen mozallowfullscreen="true" webkitallowfullscreen="true" allow="autoplay; fullscreen; xr-spatial-tracking" xr-spatial-tracking="true" execution-while-out-of-viewport="true" execution-while-not-rendered="true" web-share="true" src="https://sketchfab.com/models/be6aa4ac9adc4f558cc789a0baed8ae3/embed"> </iframe>
+        <iframe title="Rice Plant" className="w-full h-full" frameBorder="0" allowFullScreen allow="autoplay; fullscreen; xr-spatial-tracking" xr-spatial-tracking="true" execution-while-out-of-viewport="true" execution-while-not-rendered="true" web-share="true" src="https://sketchfab.com/models/be6aa4ac9adc4f558cc789a0baed8ae3/embed"> </iframe>
       </div>
     );
   } else if (cropType === 'Cotton') {
     embedContent = (
       <div className="sketchfab-embed-wrapper w-full h-full relative z-0">
-        <iframe title="Cotton branch" className="w-full h-full" frameBorder="0" allowFullScreen mozallowfullscreen="true" webkitallowfullscreen="true" allow="autoplay; fullscreen; xr-spatial-tracking" xr-spatial-tracking="true" execution-while-out-of-viewport="true" execution-while-not-rendered="true" web-share="true" src="https://sketchfab.com/models/6c6c90de4626417a92f846ad06e551fa/embed"> </iframe>
+        <iframe title="Cotton branch" className="w-full h-full" frameBorder="0" allowFullScreen allow="autoplay; fullscreen; xr-spatial-tracking" xr-spatial-tracking="true" execution-while-out-of-viewport="true" execution-while-not-rendered="true" web-share="true" src="https://sketchfab.com/models/6c6c90de4626417a92f846ad06e551fa/embed"> </iframe>
       </div>
     );
   } else {
