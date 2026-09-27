@@ -1,143 +1,51 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
 :root {
-  --bg-page: #FAFAFA;
-  --bg-card: #FFFFFF;
-  --bg-subtle: #F4F4F5;
-  --text-main: #18181B;
-  --text-sub: #52525B;
-  --text-muted: #71717A;
-  --border: #E4E4E7;
-  --border-subtle: #F4F4F5;
-  --primary: #15803D;
-  --primary-hover: #166534;
-  --primary-bg: #DCFCE7;
-  --conf-high: #15803D;
-  --conf-high-bg: #DCFCE7;
-  --conf-med: #B45309;
-  --conf-med-bg: #FEF3C7;
-  --conf-low: #C2410C;
-  --conf-low-bg: #FFEDD5;
-  --conf-abstain: #B91C1C;
-  --conf-abstain-bg: #FEE2E2;
+  --background: #faf9f6;
+  --foreground: #0f172a;
+  
+  --surface: #ffffff;
+  --surface-hover: #f1f5f9;
+  
+  --primary: #166534;
+  --primary-hover: #14532d;
+  
+  --warning: #c2410c;
+  --warning-bg: #fff7ed;
+  
+  --border: #e2e8f0;
+  --muted: #64748b;
 }
 
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-hover: var(--surface-hover);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-warning: var(--warning);
+  --color-warning-bg: var(--warning-bg);
+  --color-border: var(--border);
+  --color-muted: var(--muted);
+  
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
 }
 
 body {
-  background-color: var(--bg-page);
-  color: var(--text-main);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  line-height: 1.5;
-  -webkit-font-smoothing: antialiased;
-  min-height: 100vh;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  @apply antialiased selection:bg-primary/20;
 }
 
-/* Base custom utility styles for crisp rendering */
-.card-clean {
-  background-color: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 1.5rem;
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04);
+html {
+  scroll-behavior: smooth;
 }
 
-.badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.25rem 0.625rem;
-  border-radius: 9999px;
-  font-size: 0.75rem;
-  font-weight: 600;
-  letter-spacing: 0.025em;
-  text-transform: uppercase;
-}
-
-.badge-high {
-  background-color: var(--conf-high-bg);
-  color: var(--conf-high);
-}
-
-.badge-medium {
-  background-color: var(--conf-med-bg);
-  color: var(--conf-med);
-}
-
-.badge-low {
-  background-color: var(--conf-low-bg);
-  color: var(--conf-low);
-}
-
-.badge-abstain {
-  background-color: var(--conf-abstain-bg);
-  color: var(--conf-abstain);
-}
-
-.btn-primary {
-  background-color: var(--primary);
-  color: #FFFFFF;
-  padding: 0.625rem 1.25rem;
-  border-radius: 8px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  border: none;
-  cursor: pointer;
-  transition: background-color 0.15s ease;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-}
-
-.btn-primary:hover:not(:disabled) {
-  background-color: var(--primary-hover);
-}
-
-.btn-primary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.btn-secondary {
-  background-color: #FFFFFF;
-  color: var(--text-main);
-  border: 1px solid var(--border);
-  padding: 0.625rem 1.25rem;
-  border-radius: 8px;
-  font-size: 0.875rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.15s ease;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-}
-
-.btn-secondary:hover:not(:disabled) {
-  background-color: var(--bg-subtle);
-  border-color: #D4D4D8;
-}
-
-.input-clean {
-  width: 100%;
-  padding: 0.625rem 0.875rem;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  background-color: #FFFFFF;
-  color: var(--text-main);
-  font-size: 0.875rem;
-  outline: none;
-  transition: border-color 0.15s ease;
-}
-
-.input-clean:focus {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 1px var(--primary);
+/* Accessible focus ring */
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
 }

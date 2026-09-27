@@ -26,7 +26,7 @@ except (ImportError, ValueError):
     try:
         from rag.ingestion import ingest_documents, HybridIndex, DOCS_DIR
     except (ImportError, ValueError):
-        from backend.rag.ingestion import ingest_documents, HybridIndex, DOCS_DIR
+        from ...rag.ingestion import ingest_documents, HybridIndex, DOCS_DIR
 
 
 @dataclass

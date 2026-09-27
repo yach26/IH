@@ -112,24 +112,51 @@ def get_twin(field_id: str, conn: sqlite3.Connection = Depends(get_conn)):
            ORDER BY test_date DESC LIMIT 1""",
         (row["field_id"],),
     ).fetchone()
+    
     rec = conn.execute(
         """SELECT * FROM recommendations WHERE field_id = ?
            ORDER BY generated_at DESC LIMIT 1""",
         (row["field_id"],),
     ).fetchone()
+    
     plan = None
     if rec:
         try:
             plan = _json_load(rec["plan_json"])
         except json.JSONDecodeError:
-            plan = {"raw": rec["plan_json"]}
-        plan["status_db"] = rec["status"]
-        plan["invalidated_at"] = rec["invalidated_at"]
-    return {
-        "field": dict(row),
-        "soil": dict(soil) if soil else None,
-        "latest_plan": plan,
+            plan = {}
+
+    alerts_list = get_alerts(conn, row["field_id"])
+    active_alert = None
+    if alerts_list:
+        first_alert = alerts_list[0]
+        active_alert = {
+            "title": first_alert.get("type", "Alert"),
+            "description": json.dumps(first_alert.get("payload", {}))
+        }
+
+    # Formatting to match frontend `twin_state.json`
+    formatted_response = {
+        "fieldId": row["field_code"] or str(row["field_id"]),
+        "crop": dict(row).get("crop_name") or dict(row).get("crop_code") or "Unknown",
+        "growthStage": dict(row).get("current_stage") or "Initial",
+        "soilHealthScore": 72, # Static for MVP or derived later
+        "nutrients": {
+            "n": { "current": soil["n_kg_ha"] if soil else 0, "target": 100, "unit": "kg/ha" },
+            "p": { "current": soil["p_kg_ha"] if soil else 0, "target": 100, "unit": "kg/ha" },
+            "k": { "current": soil["k_kg_ha"] if soil else 0, "target": 100, "unit": "kg/ha" }
+        },
+        "currentPlan": {
+            "nextAction": plan.get("what", "Awaiting plan") if plan else "Awaiting plan",
+            "quantity": str(plan.get("how_much", "N/A")) if plan else "N/A",
+            "applicationWindow": plan.get("when", "N/A") if plan else "N/A",
+            "estimatedCost": plan.get("cost", 1200) if plan else 1200,
+            "confidence": plan.get("confidence", rec["confidence"] if rec else "N/A") if plan else "N/A"
+        },
+        "activeAlert": active_alert
     }
+    
+    return formatted_response
 
 
 @router.post("/fields/{field_id}/recommend", response_model=RecommendationOut)
@@ -466,10 +493,60 @@ def what_if_simulator(
         # The pre-scaling narrative describes different quantities.
         simulated_plan["narrative"] = ""
 
-    return {
-        "original_plan": original_plan,
-        "simulated_plan": simulated_plan
+    # Formatting to match frontend `what_if.json`
+    def format_plan(plan: dict, is_simulated: bool = False):
+        if not plan:
+            return {
+                "fertilizer": "N/A", "rainfall": "N/A", "yieldBand": "N/A",
+                "confidence": "N/A", "cost": 0,
+                "modelSignals": { "growthStage": dict(row).get("current_stage") or "Initial", "vigor": "N/A", "nutrientSufficiency": "N/A", "waterStress": "N/A" }
+            }
+        # fertilizer formatted string
+        how_much = plan.get("how_much", {})
+        fert_str = ", ".join([f"{v} {k}" for k,v in how_much.items()]) if how_much else "N/A"
+        
+        # Rainfall condition
+        rainfall = "Normal"
+        if is_simulated and mock_weather.get("rainfall_mm_next_7d"):
+            if mock_weather["rainfall_mm_next_7d"] > 50: rainfall = "Heavy"
+            elif mock_weather["rainfall_mm_next_7d"] < 10: rainfall = "Low"
+
+        # Yield band
+        yield_val = dict(row).get("target_yield_kg_ha") or 4000
+        yield_t = float(yield_val) / 1000
+        if is_simulated and body.fertilizer_delta_pct and body.fertilizer_delta_pct < 0:
+            yield_t *= 0.95 # Mock reduction for visualization
+        yield_band = f"{round(yield_t * 0.95, 1)}-{round(yield_t * 1.05, 1)} t/ha"
+
+        # Vigor and stress
+        vigor = "thriving"
+        water_stress = "none"
+        if rainfall == "Heavy": water_stress = "high"
+        elif rainfall == "Low": water_stress = "moderate"
+        if is_simulated and body.fertilizer_delta_pct and body.fertilizer_delta_pct < 0:
+            vigor = "below-average"
+
+        return {
+            "fertilizer": fert_str,
+            "rainfall": rainfall,
+            "yieldBand": yield_band,
+            "confidence": plan.get("confidence", "HIGH"),
+            "cost": plan.get("cost", 1200) if not is_simulated else (plan.get("cost", 1200) * (1 + (body.fertilizer_delta_pct or 0)/100.0)),
+            "modelSignals": {
+                "growthStage": dict(row).get("current_stage") or "Initial",
+                "vigor": vigor,
+                "nutrientSufficiency": "suboptimal" if (is_simulated and body.fertilizer_delta_pct and body.fertilizer_delta_pct < 0) else "optimal",
+                "waterStress": water_stress
+            }
+        }
+
+    formatted_response = {
+        "crop": dict(row).get("crop_name") or dict(row).get("crop_code") or "Unknown",
+        "original": format_plan(original_plan, is_simulated=False),
+        "simulated": format_plan(simulated_plan, is_simulated=True)
     }
+
+    return formatted_response
 
 
 @router.post("/fields/{field_id}/override")
@@ -617,3 +694,89 @@ def create_field(
             f"POST /fields/{field_id}/recommend — generate recommendation",
         ],
     }
+
+
+# ─── Convenience / Alias Routes ───────────────────────────────────────────────
+
+@router.get("/fields")
+def list_fields(conn: sqlite3.Connection = Depends(get_conn)):
+    """Return all registered fields with basic metadata."""
+    rows = conn.execute(
+        """SELECT f.field_code, f.area_ha, f.lat, f.lon,
+                  fa.farmer_name, fa.village,
+                  fac.crop_code, fac.current_stage, fac.season
+           FROM fields f
+           LEFT JOIN farmers fa ON fa.farmer_id = f.farmer_id
+           LEFT JOIN field_active_crop fac ON fac.field_id = f.field_id
+           ORDER BY f.field_code"""
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+@router.post("/upload-soil-report")
+async def upload_soil_report_global(
+    file: UploadFile = File(...),
+    conn: sqlite3.Connection = Depends(get_conn),
+):
+    """
+    Global OCR upload endpoint (field-agnostic).
+    Extracts soil nutrient values from an uploaded file (PDF / image / text).
+    """
+    from ..core.ocr import run_ocr_pipeline
+
+    contents = await file.read()
+    filename = file.filename or "upload.txt"
+
+    try:
+        result = run_ocr_pipeline(contents, filename)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"OCR pipeline error: {exc}") from exc
+
+    extracted = result.get("extracted", result)
+
+    def _val(key):
+        v = extracted.get(key)
+        return v.get("value") if isinstance(v, dict) else v
+
+    return {
+        "status":     result.get("status", "extracted"),
+        "engine":     result.get("engine", "text_direct"),
+        "n_kg_ha":    _val("n_kg_ha"),
+        "p_kg_ha":    _val("p_kg_ha"),
+        "k_kg_ha":    _val("k_kg_ha"),
+        "ph":         _val("ph"),
+        "oc_percent": _val("oc_percent"),
+        "ec_ds_m":    _val("ec_ds_m"),
+        "raw":        extracted,
+    }
+
+
+@router.get("/recommend/{field_id}", response_model=RecommendationOut)
+def recommend_get(
+    field_id: str,
+    conn: sqlite3.Connection = Depends(get_conn),
+):
+    """
+    GET alias for /fields/{field_id}/recommend.
+    Runs the full proof-carrying multi-agent recommendation pipeline.
+    """
+    row = _field_row(conn, field_id)
+    get_monitoring_agent().bind(conn)
+    result = run_orchestrated_ledger(conn, row)
+    return result
+
+
+@router.get("/alerts")
+def list_all_alerts(
+    limit: int = Query(50, ge=1, le=500),
+    conn: sqlite3.Connection = Depends(get_conn),
+):
+    """Return the most recent alerts across ALL fields."""
+    rows = conn.execute(
+        """SELECT a.*, f.field_code
+           FROM alerts a
+           LEFT JOIN fields f ON f.field_id = a.field_id
+           ORDER BY a.triggered_at DESC LIMIT ?""",
+        (limit,),
+    ).fetchall()
+    return [dict(r) for r in rows]
