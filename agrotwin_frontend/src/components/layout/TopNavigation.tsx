@@ -75,10 +75,6 @@ function TopNavigationInner() {
 
         {/* Right side controls */}
         <div className="flex items-center space-x-3 text-sm">
-          <div className="hidden sm:flex items-center space-x-2 px-3 py-1.5 rounded-md bg-surface border border-border">
-            <span className="text-muted">Region:</span>
-            <span className="font-medium text-foreground">Kolhapur</span>
-          </div>
 
           <button className="p-2 rounded-full hover:bg-surface-hover text-muted transition-colors">
             <span className="sr-only">Notifications</span>

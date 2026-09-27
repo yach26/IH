@@ -161,6 +161,52 @@ class TestFarmerCreation:
 # ── Phase 1 §3: field creation endpoint ──────────────────────────────────────
 
 class TestFieldCreation:
+    def test_onboarding_options_come_from_database(self):
+        response = client.get("/onboarding/options")
+        assert response.status_code == 200
+        options = response.json()
+        assert options["districts"][0]["district_id"] == _district_id()
+        assert options["crops"] == [{"crop_code": "SUGARCANE", "crop_name": "Sugarcane", "recommendation_type": "PRE_SEASONAL"}]
+        assert options["stages"] == []
+
+    def test_new_field_has_no_pilot_data_or_fertilizer_on_abstention(self):
+        created = client.post("/fields", json={
+            "region_id": _region_id(), "district_id": _district_id(),
+            "area_ha": 1.25, "field_code": "NEW-FARM",
+        })
+        assert created.status_code == 201
+        fid = created.json()["field_id"]
+        twin = client.get(f"/fields/{fid}/twin").json()
+        assert twin["hasSoilTest"] is False
+        assert twin["growthStage"] == ""
+        assert twin["stageSequence"] == []
+        assert twin["lat"] is None and twin["lon"] is None
+        assert twin["nutrients"]["n"]["current"] is None
+        assert twin["currentPlan"]["fertilizerBreakdown"] == {}
+        assert client.post(f"/fields/{fid}/recommend", json={}).json()["status"] == "ABSTAIN"
+        abstained = client.get(f"/fields/{fid}/twin").json()
+        assert abstained["currentPlan"]["fertilizerBreakdown"] == {}
+        assert abstained["currentPlan"]["quantity"] == "N/A"
+
+    def test_upload_requires_complete_confirmation_for_its_own_field(self, monkeypatch, tmp_path):
+        from app.agents import soil_report_agent
+        monkeypatch.setattr(soil_report_agent, "UPLOAD_DIR", str(tmp_path))
+        fid = client.post("/fields", json={
+            "region_id": _region_id(), "district_id": _district_id(),
+            "area_ha": 1, "field_code": "UPLOAD-ONLY",
+        }).json()["field_id"]
+        upload = client.post(f"/fields/{fid}/soil-report/upload", files={
+            "file": ("soil.txt", b"N: 120 kg/ha\nP: 40 kg/ha\nK: 80 kg/ha\npH: 7.2", "text/plain"),
+        })
+        assert upload.status_code == 200
+        uid = upload.json()["upload_id"]
+        assert client.get(f"/fields/{fid}/twin").json()["hasSoilTest"] is False
+        assert client.post(f"/fields/{fid}/soil-report/confirm", json={"upload_id": uid, "soil_test": {}}).status_code == 422
+        assert client.post(f"/fields/{_field_id()}/soil-report/confirm", json={
+            "upload_id": uid, "soil_test": {"n_kg_ha": 120, "p_kg_ha": 40, "k_kg_ha": 80},
+        }).status_code == 404
+        assert client.get(f"/fields/{fid}/twin").json()["hasSoilTest"] is False
+
     def test_create_field_returns_201(self):
         rid = _region_id()
         did = _district_id()

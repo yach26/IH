@@ -26,7 +26,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     let detail = res.statusText;
     try {
       const body = await res.json();
-      detail = body.detail || JSON.stringify(body);
+      detail = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail || body);
     } catch {
       // response wasn't JSON — keep statusText
     }
@@ -49,8 +49,8 @@ export interface FieldSummary {
 }
 
 export interface TwinNutrient {
-  current: number;
-  target: number;
+  current: number | null;
+  target: number | null;
   unit: string;
 }
 
@@ -78,24 +78,25 @@ export interface TwinResponse {
   stageSequence: string[];
   area_ha: number;
   soilType: string | null;
-  lat: number;
-  lon: number;
-  location: string;
+  lat: number | null;
+  lon: number | null;
+  location: string | null;
   hasSoilTest: boolean;
-  soilHealthScore: number;
+  soilHealthScore: number | null;
   soilDetail: {
     ph: number | null;
     oc_percent: number | null;
-    n_score: number;
-    p_score: number;
-    k_score: number;
+    n_score: number | null;
+    p_score: number | null;
+    k_score: number | null;
   };
   nutrients: { n: TwinNutrient; p: TwinNutrient; k: TwinNutrient };
   currentPlan: TwinCurrentPlan;
   weather: {
-    rainfall_mm_next_7d: number;
+    available: boolean;
+    rainfall_mm_next_7d: number | null;
     heavy_rain_alert: boolean;
-    condition: string;
+    condition: string | null;
   };
   activeAlert: { title: string; description: string } | null;
 }
@@ -173,6 +174,27 @@ export interface RecommendationOut {
 
 export function getFields(): Promise<FieldSummary[]> {
   return request<FieldSummary[]>("/fields");
+}
+
+export interface OnboardingOptions {
+  stages: { crop_code: string; stage_name: string; region_id: number | null }[];
+  districts: { district_id: number; region_id: number; district_name: string; region_name: string }[];
+  crops: { crop_code: string; crop_name: string; recommendation_type: string }[];
+}
+
+export function getOnboardingOptions(): Promise<OnboardingOptions> {
+  return request("/onboarding/options");
+}
+
+export function createFarmer(body: { region_id: number; full_name: string }): Promise<{ farmer_id: number }> {
+  return request("/farmers", { method: "POST", body: JSON.stringify(body) });
+}
+
+export function createField(body: {
+  region_id: number; district_id: number; farmer_id: number; field_code: string;
+  area_ha: number; irrigation_type: string; lat: number | null; lon: number | null;
+}): Promise<{ field_id: number }> {
+  return request("/fields", { method: "POST", body: JSON.stringify(body) });
 }
 
 export function getTwin(fieldId: string, signal?: AbortSignal): Promise<TwinResponse> {

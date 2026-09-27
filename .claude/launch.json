@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "agrotwin-backend",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "cd /d \"%CD%\\agrotwin_api\" && python -m uvicorn app.main:app --host 127.0.0.1 --port 8000"],
+      "port": 8000
+    },
+    {
+      "name": "agrotwin-frontend",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "cd /d \"%CD%\\agrotwin_frontend\" && npm run dev"],
+      "port": 3000
+    }
+  ]
+}

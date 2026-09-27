@@ -5,11 +5,13 @@ import Link from "next/link";
 import {
   uploadSoilReport,
   confirmSoilReport,
+  getTwin,
   ApiError,
   type SoilReportUploadResponse,
 } from "@/lib/api";
 import { useFieldParam } from "@/lib/useFieldParam";
 import FieldSelector from "@/components/ui/FieldSelector";
+import FieldOnboarding from "@/components/ui/FieldOnboarding";
 
 const FIELD_LABELS: Record<string, string> = {
   n_kg_ha: "Nitrogen (N) kg/ha",
@@ -24,7 +26,7 @@ const REVIEW_THRESHOLD = 0.85;
 
 type EditableValues = Record<string, string>;
 
-function UploadContent() {
+function UploadField() {
   const { fieldId, setFieldId, fields, fieldsError } = useFieldParam();
 
   const [dragActive, setDragActive] = React.useState(false);
@@ -49,6 +51,7 @@ function UploadContent() {
   }
 
   async function handleFile(file: File) {
+    if (!fieldId || uploading || confirming) return;
     resetForNewUpload();
     setUploading(true);
     try {
@@ -86,6 +89,7 @@ function UploadContent() {
         upload_id: uploadResult?.upload_id ?? null,
         soil_test: soil_test as never,
       });
+      await getTwin(fieldId);
       setConfirmed(true);
     } catch (err) {
       setConfirmError(err instanceof ApiError ? err.message : "Confirm failed — the backend may be unreachable.");
@@ -235,7 +239,7 @@ function UploadContent() {
 
             <button
               onClick={handleConfirm}
-              disabled={confirming}
+              disabled={confirming || ["n_kg_ha", "p_kg_ha", "k_kg_ha"].some(key => !values[key]?.trim() || !Number.isFinite(Number(values[key])))}
               className="mt-5 w-full bg-gray-900 hover:bg-gray-800 disabled:opacity-50 text-white text-sm font-semibold px-5 py-2.5 rounded-lg transition"
             >
               {confirming ? "Confirming…" : "Confirm & Update Field"}
@@ -261,6 +265,12 @@ function UploadContent() {
       </div>
     </div>
   );
+}
+
+function UploadContent() {
+  const { fieldId, setFieldId, fields, fieldsError } = useFieldParam();
+  if (!fieldId) return <FieldOnboarding fields={fields} fieldsError={fieldsError} onSelect={setFieldId} />;
+  return <UploadField key={fieldId} />;
 }
 
 export default function UploadPage() {

@@ -3,9 +3,10 @@
 import React, { useEffect, useRef } from "react";
 
 interface FieldMapProps {
-  lat: number;
-  lng: number;
+  lat: number | null;
+  lng: number | null;
   fieldId: string;
+  areaLabel?: string | null;
   zoom?: number;
   className?: string;
 }
@@ -14,6 +15,7 @@ export default function FieldMap({
   lat,
   lng,
   fieldId,
+  areaLabel,
   zoom = 14,
   className = "w-full h-full min-h-[160px]",
 }: FieldMapProps) {
@@ -22,8 +24,9 @@ export default function FieldMap({
   const mapRef = useRef<any>(null);
 
   useEffect(() => {
-    // Guard: don't attempt to render the map if lat/lng aren't valid numbers yet
-    if (!lat || !lng || isNaN(lat) || isNaN(lng)) return;
+    // Guard: don't attempt to render the map without a real recorded lat/lng —
+    // never fall back to a default coordinate just to draw something.
+    if (lat == null || lng == null || isNaN(lat) || isNaN(lng)) return;
 
     let isMounted = true;
 
@@ -82,7 +85,7 @@ export default function FieldMap({
       ).addTo(map);
 
       polygon
-        .bindTooltip(`<b>Field ${fieldId}</b><br/>2.5 ha`, {
+        .bindTooltip(`<b>Field ${fieldId}</b>${areaLabel ? `<br/>${areaLabel}` : ""}`, {
           permanent: true,
           direction: "center",
           className: "leaflet-field-label",
@@ -97,7 +100,7 @@ export default function FieldMap({
         mapRef.current = null;
       }
     };
-  }, [lat, lng, fieldId, zoom]);
+  }, [lat, lng, fieldId, zoom, areaLabel]);
 
   return (
     <>

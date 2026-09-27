@@ -29,14 +29,19 @@ export default function PilotRegionsMap({ className = "w-full h-[420px]" }: Pilo
     fetch('http://localhost:8000/fields')
       .then(r => r.json())
       .then((data: { field_code?: string; lat?: number; lon?: number; crop_code?: string }[]) => {
-        if (data && data.length > 0) {
-          const dynamicRegions = data.map(d => ({
+        // Only plot fields with a real recorded lat/lon — never invent
+        // coordinates (e.g. defaulting to the Kolhapur pilot location) just
+        // to put a pin on the map for a field that hasn't provided one.
+        const dynamicRegions = (data || [])
+          .filter((d): d is typeof d & { lat: number; lon: number } => d.lat != null && d.lon != null)
+          .map(d => ({
             name: d.field_code || "Field",
-            lat: d.lat || 16.705,
-            lng: d.lon || 74.2433,
+            lat: d.lat,
+            lng: d.lon,
             crops: d.crop_code || "Unknown",
             district: "Active Region"
           }));
+        if (dynamicRegions.length > 0) {
           setRegions(dynamicRegions);
         }
       })

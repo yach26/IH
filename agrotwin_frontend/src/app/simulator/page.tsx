@@ -6,6 +6,9 @@ import { simulateCrop } from "@/simulation/simulationEngine";
 import { CROPS } from "@/simulation/cropConfigs";
 import { CropVisualState } from "@/simulation/types";
 import { whatIf as apiWhatIf, getTwin } from "@/lib/api";
+import Link from "next/link";
+import { useFieldParam } from "@/lib/useFieldParam";
+import FieldOnboarding from "@/components/ui/FieldOnboarding";
 
 // ─── Sub-components ────────────────────────────────────────────────────────────
 
@@ -169,18 +172,15 @@ const CROP_TO_FIELD: Record<string, string> = {
   cotton: 'REAL-003',
   rice: 'REAL-004'
 };
-const FIELD_TO_CROP: Record<string, string> = Object.fromEntries(
-  Object.entries(CROP_TO_FIELD).map(([crop, field]) => [field, crop])
-);
 
-function SimulatorContent() {
+function SimulatorContent({ initialCrop }: { initialCrop: string }) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
   const fieldParam = searchParams.get('field');
 
   const [activeCropId, setActiveCropId] = useState<string>(
-    (fieldParam && FIELD_TO_CROP[fieldParam]) || "sugarcane"
+    initialCrop
   );
   // A ?field= that doesn't correspond to one of the 4 demo crop tabs is still
   // the authoritative field to fetch — the crop tabs are a visual convenience,
@@ -193,7 +193,7 @@ function SimulatorContent() {
   const [realFieldInfo, setRealFieldInfo] = useState<{ crop: string; stage: string; } | null>(null);
   const [twinError, setTwinError] = useState<string | null>(null);
 
-  const activeFieldId = fieldOverride || CROP_TO_FIELD[activeCropId] || 'REAL-001';
+  const activeFieldId = fieldOverride || fieldParam || '';
 
   function selectCrop(cropId: string) {
     setActiveCropId(cropId);
@@ -211,11 +211,11 @@ function SimulatorContent() {
         setTwinError(null);
         // Use the gap N as the required target to apply
         const gap = data.currentPlan?.soilGap;
-        if (gap?.N) {
+        if (gap?.N != null) {
           // Real recommended N gap to fill — this is the meaningful "baseline" for this field
           setRealBaseline(Math.round(gap.N));
         } else {
-          setRealBaseline(CROPS[activeCropId]?.baselineFertilizer || null);
+          setRealBaseline(null);
         }
         setRealCitation(data.currentPlan?.citation || '');
         setRealFieldInfo({ crop: data.crop, stage: data.growthStage });
@@ -593,7 +593,31 @@ function SimulatorContent() {
 export default function SimulatorPage() {
   return (
     <Suspense fallback={<div className="min-h-screen bg-[#FDFBF7] flex items-center justify-center text-sm text-gray-500">Loading…</div>}>
-      <SimulatorContent />
+      <SimulatorEntry />
     </Suspense>
   );
+}
+
+function SimulatorEntry() {
+  const { fieldId, setFieldId, fields, fieldsError } = useFieldParam();
+  if (!fieldId) return <FieldOnboarding fields={fields} fieldsError={fieldsError} onSelect={setFieldId} />;
+  return <SimulatorGate key={fieldId} fieldId={fieldId} />;
+}
+
+function SimulatorGate({ fieldId }: { fieldId: string }) {
+  const [state, setState] = useState<{ crop: string; ready: boolean } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    getTwin(fieldId, controller.signal).then(twin => {
+      if (!controller.signal.aborted) setState({ crop: twin.crop.toLowerCase(), ready: twin.hasSoilTest && !['NO_DATA', 'ABSTAIN'].includes(twin.currentPlan.status) });
+    }).catch(err => { if (!controller.signal.aborted) setError(err instanceof Error ? err.message : 'Could not load your field.'); });
+    return () => controller.abort();
+  }, [fieldId]);
+  if (state?.ready && CROPS[state.crop]) return <SimulatorContent initialCrop={state.crop} />;
+  return <main className="min-h-screen bg-gray-50 p-10 text-center">
+    <h1 className="text-xl font-bold">{error ? 'Field unavailable' : !state ? 'Loading your field…' : state.ready ? 'Simulation unavailable for this crop' : 'Complete your field first'}</h1>
+    <p className="my-4 text-gray-600">{error || 'The simulator needs confirmed soil data and a recommendation for your selected field.'}</p>
+    <Link className="text-green-800 underline" href={`/dashboard?field=${encodeURIComponent(fieldId)}`}>Continue to your field</Link>
+  </main>;
 }

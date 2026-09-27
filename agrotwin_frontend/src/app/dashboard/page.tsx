@@ -3,9 +3,10 @@
 import React, { Suspense } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
-import { getTwin, ApiError, type TwinResponse } from '@/lib/api';
+import { getTwin, recommend, ApiError, type TwinResponse } from '@/lib/api';
 import { useFieldParam } from '@/lib/useFieldParam';
 import FieldSelector from '@/components/ui/FieldSelector';
+import FieldOnboarding from '@/components/ui/FieldOnboarding';
 import StageTimeline from '@/components/ui/StageTimeline';
 
 const FieldMap = dynamic(() => import('@/components/ui/FieldMap'), { ssr: false });
@@ -20,7 +21,8 @@ function confidenceBadgeClass(confidence: string): string {
   return 'bg-blue-50 text-blue-600 border-blue-200';
 }
 
-function nutrientLabel(score: number): string {
+function nutrientLabel(score: number | null): string {
+  if (score == null) return 'Not available';
   if (score >= 80) return 'High';
   if (score >= 45) return 'Moderate';
   return 'Low';
@@ -37,21 +39,21 @@ function StatusDot({ color }: { color: string }) {
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type NutrientEntry = { value: number; score: number; label: string; color: string };
+type NutrientEntry = { value: number | null; score: number | null; label: string; color: string };
 type FieldState = {
   id: string;
   status: string;
-  location: string;
+  location: string | null;
   crop: string;
   stage: string;
   stageSequence: string[];
   area: string;
   soilType: string | null;
-  lat: number;
-  lon: number;
+  lat: number | null;
+  lon: number | null;
   hasSoilTest: boolean;
-  soilHealthScore: number;
-  weather: { rainfall7d: number; heavy_rain_alert: boolean; condition: string };
+  soilHealthScore: number | null;
+  weather: { available: boolean; rainfall7d: number | null; heavy_rain_alert: boolean; condition: string | null };
   soil: {
     n: NutrientEntry;
     p: NutrientEntry;
@@ -63,8 +65,6 @@ type FieldState = {
   fieldStatus: {
     cropCondition: { label: string; color: string };
     waterStress: { label: string; color: string };
-    pestRisk: { label: string; color: string; provisional: boolean };
-    diseaseRisk: { label: string; color: string; provisional: boolean };
     overall: string;
   };
   recommendation: {
@@ -90,21 +90,24 @@ function mapTwinToFieldState(data: TwinResponse): FieldState {
   const nutrients = data.nutrients || {};
   const soil = data.soilDetail || {};
   const plan = data.currentPlan || ({} as TwinResponse['currentPlan']);
-  const weather = data.weather || { rainfall_mm_next_7d: 0, heavy_rain_alert: false, condition: 'Unknown' };
+  const weather = data.weather || { available: false, rainfall_mm_next_7d: null, heavy_rain_alert: false, condition: null };
   const stages: string[] = data.stageSequence || [];
   const currentStageName = data.growthStage || '';
 
-  const nScore = soil.n_score ?? 0;
-  const pScore = soil.p_score ?? 0;
-  const kScore = soil.k_score ?? 0;
+  const nScore = soil.n_score ?? null;
+  const kScore = soil.k_score ?? null;
 
-  const rainfallOk = !weather.heavy_rain_alert;
-  const waterStress = rainfallOk ? 'Low' : 'High';
-  const waterColor = rainfallOk ? 'text-gray-400' : 'text-red-500';
-  const nSufficient = nScore >= 60;
-  const cropCond = nSufficient ? 'Good' : 'Moderate';
-  const cropColor = nSufficient ? 'text-green-500' : 'text-amber-500';
-  const overall = (nSufficient && rainfallOk) ? 'Healthy' : 'Needs Attention';
+  // Water stress and crop condition only have a real signal when the
+  // relevant backend data actually exists — otherwise "not available", never
+  // a fabricated "Good"/"Low".
+  const weatherKnown = weather.available;
+  const rainfallOk = weatherKnown ? !weather.heavy_rain_alert : null;
+  const waterStress = rainfallOk == null ? 'Not available' : rainfallOk ? 'Low' : 'High';
+  const waterColor = rainfallOk == null ? 'text-gray-400' : rainfallOk ? 'text-gray-400' : 'text-red-500';
+  const nSufficient = nScore != null ? nScore >= 60 : null;
+  const cropCond = nSufficient == null ? 'Not available' : nSufficient ? 'Good' : 'Moderate';
+  const cropColor = nSufficient == null ? 'text-gray-400' : nSufficient ? 'text-green-500' : 'text-amber-500';
+  const overall = (nSufficient && rainfallOk) ? 'Healthy' : (nSufficient == null && rainfallOk == null) ? 'Unknown' : 'Needs Attention';
 
   const gap = plan.soilGap || {};
   const description = `Based on real soil test (N=${nutrients.n?.current ?? '—'} kg/ha, P=${nutrients.p?.current ?? '—'} kg/ha, K=${nutrients.k?.current ?? '—'} kg/ha) and ${data.crop} at ${currentStageName} stage. Nutrient gaps: N ${gap.N ?? '—'} kg/ha, P₂O₅ ${gap.P2O5 ?? '—'} kg/ha, K₂O ${gap.K2O ?? '—'} kg/ha.${plan.citation ? ` Source: ${plan.citation}.` : ''}`;
@@ -112,7 +115,7 @@ function mapTwinToFieldState(data: TwinResponse): FieldState {
   return {
     id: data.fieldId,
     status: 'Active',
-    location: data.location || `${data.lat}, ${data.lon}`,
+    location: data.location,
     crop: data.crop || 'Unknown',
     stage: currentStageName,
     stageSequence: stages,
@@ -121,16 +124,17 @@ function mapTwinToFieldState(data: TwinResponse): FieldState {
     lat: data.lat,
     lon: data.lon,
     hasSoilTest: data.hasSoilTest ?? false,
-    soilHealthScore: data.soilHealthScore ?? 0,
+    soilHealthScore: data.soilHealthScore ?? null,
     weather: {
-      rainfall7d: weather.rainfall_mm_next_7d ?? 0,
+      available: weatherKnown,
+      rainfall7d: weather.rainfall_mm_next_7d,
       heavy_rain_alert: weather.heavy_rain_alert ?? false,
-      condition: weather.condition || 'Unknown',
+      condition: weather.condition,
     },
     soil: {
-      n: { value: nutrients.n?.current ?? 0, score: nScore, label: nutrientLabel(nScore), color: 'bg-blue-500' },
-      p: { value: nutrients.p?.current ?? 0, score: pScore, label: nutrientLabel(pScore), color: 'bg-purple-500' },
-      k: { value: nutrients.k?.current ?? 0, score: kScore, label: nutrientLabel(kScore), color: 'bg-amber-500' },
+      n: { value: nutrients.n?.current ?? null, score: nScore, label: nutrientLabel(nScore), color: 'bg-blue-500' },
+      p: { value: nutrients.p?.current ?? null, score: soil.p_score ?? null, label: nutrientLabel(soil.p_score ?? null), color: 'bg-purple-500' },
+      k: { value: nutrients.k?.current ?? null, score: kScore, label: nutrientLabel(kScore), color: 'bg-amber-500' },
       ph: soil.ph ?? null,
       oc: soil.oc_percent ?? null,
       note: description,
@@ -138,8 +142,6 @@ function mapTwinToFieldState(data: TwinResponse): FieldState {
     fieldStatus: {
       cropCondition: { label: cropCond, color: cropColor },
       waterStress: { label: waterStress, color: waterColor },
-      pestRisk: { label: 'Moderate', color: 'text-amber-500', provisional: true },
-      diseaseRisk: { label: 'Low', color: 'text-gray-400', provisional: true },
       overall,
     },
     recommendation: {
@@ -163,17 +165,21 @@ function mapTwinToFieldState(data: TwinResponse): FieldState {
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
-function DashboardContent() {
+function DashboardField() {
   const { fieldId, setFieldId, fields, fieldsError } = useFieldParam();
   const [field, setField] = React.useState<FieldState | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = React.useState<Date | null>(null);
+  const [generating, setGenerating] = React.useState(false);
+  const [generateError, setGenerateError] = React.useState<string | null>(null);
   const mapCardRef = React.useRef<HTMLDivElement>(null);
 
   const fetchTwin = React.useCallback((signal?: AbortSignal) => {
+    if (!fieldId) return;
     getTwin(fieldId, signal)
       .then((data) => {
+        if (signal?.aborted) return;
         setField(mapTwinToFieldState(data));
         setError(null);
         setLastUpdated(new Date());
@@ -196,7 +202,7 @@ function DashboardContent() {
     fetchTwin(controller.signal);
     // Poll so a backend-side event (e.g. a heavy-rain replan) shows up on its
     // own — the "wow moment" is nobody has to ask the AI anything or refresh.
-    const intervalId = setInterval(() => fetchTwin(), 15000);
+    const intervalId = setInterval(() => fetchTwin(controller.signal), 15000);
     return () => {
       controller.abort();
       clearInterval(intervalId);
@@ -206,6 +212,20 @@ function DashboardContent() {
 
   function scrollToMap() {
     mapCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  function handleGenerateRecommendation() {
+    setGenerating(true);
+    setGenerateError(null);
+    recommend(fieldId)
+      .then(() => {
+        setGenerating(false);
+        fetchTwin();
+      })
+      .catch((err) => {
+        setGenerating(false);
+        setGenerateError(err instanceof ApiError ? err.message : 'Could not generate a recommendation.');
+      });
   }
 
   // Full-page honest error state: never show stale/fake data as if it were live.
@@ -320,7 +340,7 @@ function DashboardContent() {
           </div>
           <div className="flex items-center gap-1.5 text-white/80 text-sm">
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/></svg>
-            {field.location}
+            {field.location || 'Location not provided'}
           </div>
         </div>
 
@@ -342,15 +362,21 @@ function DashboardContent() {
           ))}
         </div>
 
-        {/* Weather widget — only real fields (rainfall_mm_next_7d, condition, heavy_rain_alert) */}
+        {/* Weather widget — only rendered from a real weather_agent snapshot for this field */}
         <div className="absolute bottom-4 right-5 hidden md:flex items-center gap-4 bg-white/15 backdrop-blur-md border border-white/20 rounded-xl px-5 py-3">
-          <div className="max-w-[220px]">
-            <div className="text-white/70 text-[10px] uppercase tracking-wide mb-0.5">Weather agent</div>
-            <div className="text-white text-xs">{field.weather.condition}</div>
-          </div>
-          <div className="text-white/80 text-xs">
-            <div className="flex justify-between gap-6"><span>Rain (7d)</span><span className="font-semibold text-white">{field.weather.rainfall7d} mm</span></div>
-          </div>
+          {field.weather.available ? (
+            <>
+              <div className="max-w-[220px]">
+                <div className="text-white/70 text-[10px] uppercase tracking-wide mb-0.5">Weather agent</div>
+                <div className="text-white text-xs">{field.weather.condition}</div>
+              </div>
+              <div className="text-white/80 text-xs">
+                <div className="flex justify-between gap-6"><span>Rain (7d)</span><span className="font-semibold text-white">{field.weather.rainfall7d} mm</span></div>
+              </div>
+            </>
+          ) : (
+            <div className="text-white/70 text-xs">Weather unavailable for this field</div>
+          )}
         </div>
       </div>
 
@@ -365,10 +391,11 @@ function DashboardContent() {
               <span className="font-semibold text-gray-800 text-sm">Soil Health</span>
             </div>
             <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${
+              field.soilHealthScore == null ? 'text-gray-500 bg-gray-50 border-gray-200' :
               field.soilHealthScore >= 60 ? 'text-green-600 bg-green-50 border-green-200' :
               field.soilHealthScore >= 35 ? 'text-amber-600 bg-amber-50 border-amber-200' :
               'text-red-600 bg-red-50 border-red-200'
-            }`}>Score: {field.soilHealthScore}/100</span>
+            }`}>{field.soilHealthScore == null ? 'Not available' : `Score: ${field.soilHealthScore}/100`}</span>
           </div>
 
           <div className="grid grid-cols-3 gap-3 mb-4">
@@ -379,11 +406,13 @@ function DashboardContent() {
             ].map((n) => (
               <div key={n.label}>
                 <div className="text-[10px] text-gray-500 mb-1">{n.label}</div>
-                <div className="text-sm font-bold text-gray-800">{n.val} <span className="text-gray-400 font-normal text-[10px]">kg/ha</span></div>
-                <div className="h-1.5 w-full bg-gray-100 rounded-full mt-1 mb-1">
-                  <div className={`h-1.5 ${n.barColor} rounded-full`} style={{ width: `${n.score}%` }} />
+                <div className="text-sm font-bold text-gray-800">
+                  {n.val ?? '—'} <span className="text-gray-400 font-normal text-[10px]">kg/ha</span>
                 </div>
-                <div className={`text-[10px] font-semibold ${n.statusColor}`}>{n.statusLabel}</div>
+                <div className="h-1.5 w-full bg-gray-100 rounded-full mt-1 mb-1">
+                  <div className={`h-1.5 ${n.barColor} rounded-full`} style={{ width: `${n.score ?? 0}%` }} />
+                </div>
+                <div className={`text-[10px] font-semibold ${n.score == null ? 'text-gray-400' : n.statusColor}`}>{n.statusLabel}</div>
               </div>
             ))}
           </div>
@@ -410,23 +439,31 @@ function DashboardContent() {
             </div>
           </div>
 
-          <div className="mb-4">
-            <div className="flex items-center gap-3">
-              <div>
-                <div className="text-xs text-gray-500 mb-0.5">Forecast rainfall</div>
-                <div className="text-3xl font-bold text-gray-800">{field.weather.rainfall7d} mm</div>
+          {field.weather.available ? (
+            <>
+              <div className="mb-4">
+                <div className="flex items-center gap-3">
+                  <div>
+                    <div className="text-xs text-gray-500 mb-0.5">Forecast rainfall</div>
+                    <div className="text-3xl font-bold text-gray-800">{field.weather.rainfall7d} mm</div>
+                  </div>
+                  <div className={`border rounded-lg px-2 py-1 text-xs font-semibold ${
+                    field.weather.heavy_rain_alert
+                      ? 'bg-red-50 border-red-200 text-red-700'
+                      : 'bg-green-50 border-green-200 text-green-700'
+                  }`}>
+                    {field.weather.heavy_rain_alert ? '⚠ Heavy rain' : '✓ Suitable for application'}
+                  </div>
+                </div>
               </div>
-              <div className={`border rounded-lg px-2 py-1 text-xs font-semibold ${
-                field.weather.heavy_rain_alert
-                  ? 'bg-red-50 border-red-200 text-red-700'
-                  : 'bg-green-50 border-green-200 text-green-700'
-              }`}>
-                {field.weather.heavy_rain_alert ? '⚠ Heavy rain' : '✓ Suitable for application'}
-              </div>
+              <div className="text-xs text-gray-400">Source: Open-Meteo via weather agent</div>
+              <div className="text-[10px] text-gray-300 mt-1">Daily breakdown unavailable — only the 7-day total is reported by the API.</div>
+            </>
+          ) : (
+            <div className="text-sm text-gray-400 italic py-4">
+              Weather unavailable — no weather agent run has been recorded for this field yet.
             </div>
-          </div>
-          <div className="text-xs text-gray-400">Source: Open-Meteo via weather agent</div>
-          <div className="text-[10px] text-gray-300 mt-1">Daily breakdown unavailable — only the 7-day total is reported by the API.</div>
+          )}
         </div>
 
         {/* Field Status — derived from real N sufficiency + weather_agent */}
@@ -438,22 +475,25 @@ function DashboardContent() {
 
           <div className="space-y-3">
             {[
-              { name: 'Crop condition', value: field.fieldStatus.cropCondition.label, color: field.fieldStatus.cropCondition.color, provisional: false },
-              { name: 'Water stress', value: field.fieldStatus.waterStress.label, color: field.fieldStatus.waterStress.color, provisional: false },
-              { name: 'Pest risk', value: field.fieldStatus.pestRisk.label, color: field.fieldStatus.pestRisk.color, provisional: field.fieldStatus.pestRisk.provisional },
-              { name: 'Disease risk', value: field.fieldStatus.diseaseRisk.label, color: field.fieldStatus.diseaseRisk.color, provisional: field.fieldStatus.diseaseRisk.provisional },
+              { name: 'Crop condition', value: field.fieldStatus.cropCondition.label, color: field.fieldStatus.cropCondition.color },
+              { name: 'Water stress', value: field.fieldStatus.waterStress.label, color: field.fieldStatus.waterStress.color },
             ].map((item) => (
               <div key={item.name} className="flex items-center justify-between py-1.5 border-b border-gray-50 last:border-0">
                 <span className="text-xs text-gray-500">{item.name}</span>
                 <div className="flex items-center gap-1.5">
-                  {item.provisional && (
-                    <span className="text-[9px] font-semibold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full" title="No pest/disease detection agent wired up yet">
-                      Provisional
-                    </span>
-                  )}
                   <StatusDot color={item.color} />
                   <span className={`text-xs font-semibold ${item.color}`}>{item.value}</span>
                 </div>
+              </div>
+            ))}
+            {/* No pest/disease detection agent exists — never fabricate a risk level. */}
+            {[
+              { name: 'Pest risk' },
+              { name: 'Disease risk' },
+            ].map((item) => (
+              <div key={item.name} className="flex items-center justify-between py-1.5 border-b border-gray-50 last:border-0">
+                <span className="text-xs text-gray-500">{item.name}</span>
+                <span className="text-xs font-semibold text-gray-400">Not assessed</span>
               </div>
             ))}
           </div>
@@ -463,36 +503,47 @@ function DashboardContent() {
             <span className={`text-xs font-bold px-3 py-1 rounded-full ${
               field.fieldStatus.overall === 'Healthy'
                 ? 'bg-green-100 text-green-700'
+                : field.fieldStatus.overall === 'Unknown'
+                ? 'bg-gray-100 text-gray-500'
                 : 'bg-amber-100 text-amber-700'
             }`}>{field.fieldStatus.overall}</span>
           </div>
         </div>
 
-        {/* Field Location — dynamic lat/lon */}
+        {/* Field Location — only rendered when the field has a real recorded lat/lon */}
         <div ref={mapCardRef} className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 flex flex-col">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <span className="text-lg">📍</span>
               <span className="font-semibold text-gray-800 text-sm">Field Location</span>
             </div>
-            <a
-              href={`https://www.google.com/maps?q=${field.lat},${field.lon}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[10px] font-semibold text-gray-500 hover:text-green-700 transition underline"
-            >
-              Open in Google Maps ↗
-            </a>
+            {field.lat != null && field.lon != null && (
+              <a
+                href={`https://www.google.com/maps?q=${field.lat},${field.lon}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[10px] font-semibold text-gray-500 hover:text-green-700 transition underline"
+              >
+                Open in Google Maps ↗
+              </a>
+            )}
           </div>
-          <div className="relative flex-1 rounded-lg overflow-hidden min-h-[160px]">
-            <FieldMap
-              lat={field.lat}
-              lng={field.lon}
-              fieldId={field.id}
-              zoom={14}
-              className="w-full h-full min-h-[160px]"
-            />
-          </div>
+          {field.lat != null && field.lon != null ? (
+            <div className="relative flex-1 rounded-lg overflow-hidden min-h-[160px]">
+              <FieldMap
+                lat={field.lat}
+                lng={field.lon}
+                fieldId={field.id}
+                areaLabel={field.area !== '— ha' ? field.area : null}
+                zoom={14}
+                className="w-full h-full min-h-[160px]"
+              />
+            </div>
+          ) : (
+            <div className="flex-1 min-h-[160px] rounded-lg bg-gray-50 border border-dashed border-gray-200 flex items-center justify-center text-xs text-gray-400 italic text-center px-4">
+              Location not provided for this field.
+            </div>
+          )}
         </div>
 
         {/* Next Recommended Action — real pipeline result */}
@@ -526,8 +577,18 @@ function DashboardContent() {
             <div className="flex items-start gap-3 text-gray-500">
               <span className="text-2xl mt-0.5">🌱</span>
               <div>
-                <h2 className="text-lg font-bold text-gray-700 mb-1">No recommendation generated yet</h2>
-                <p className="text-sm">Call the recommend pipeline for this field to see a plan here.</p>
+                <h2 className="text-lg font-bold text-gray-700 mb-1">Soil data confirmed. No recommendation has been generated yet.</h2>
+                <p className="text-sm mb-3">Run the recommendation pipeline to get an evidence-backed fertilizer plan for this field.</p>
+                {generateError && (
+                  <p className="text-sm text-red-600 mb-3">{generateError}</p>
+                )}
+                <button
+                  onClick={handleGenerateRecommendation}
+                  disabled={generating}
+                  className="inline-flex items-center gap-2 bg-gray-900 hover:bg-gray-800 disabled:opacity-50 text-white text-sm font-semibold px-5 py-2.5 rounded-lg transition"
+                >
+                  {generating ? 'Generating…' : 'Generate Recommendation'}
+                </button>
               </div>
             </div>
           ) : (
@@ -634,6 +695,12 @@ function DashboardContent() {
       </>)}
     </div>
   );
+}
+
+function DashboardContent() {
+  const { fieldId, setFieldId, fields, fieldsError } = useFieldParam();
+  if (!fieldId) return <FieldOnboarding fields={fields} fieldsError={fieldsError} onSelect={setFieldId} />;
+  return <DashboardField key={fieldId} />;
 }
 
 export default function DashboardPage() {
