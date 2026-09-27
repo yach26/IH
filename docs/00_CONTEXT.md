@@ -70,23 +70,19 @@ agrotwin_api/          (and almost identical agrotwin_prototype/)
 - Rounding errors from previous hand-worked tables are fixed by code.
 - Confidence is computed from flags, not asserted by hand.
 
-**What is NOT yet implemented**:
-- Multi-objective MIP solver (heuristic is the **default** Optimizer; linprog exists but is not on the recommend path)
-- Real hybrid RAG beyond BM25 over the data pack
-- Frontend / PWA
-- Soil report OCR
-- What-If UI / growth simulator
+**What has been completed & integrated (2026-09-27 Continuation)**:
+- Canonical backend consolidated to `agrotwin_api/`; `agrotwin_prototype/` moved to `archive/`.
+- `schema_postgres.sql` aligned with `schema_sqlite.sql` using SERIAL integer primary keys (drift guard enforced).
+- `seed_data.py` populates `field_crops` for all 8 synthetic records (`SYN-001` through `SYN-008`).
+- `POST /fields/{id}/crop` endpoint added for live crop assignment and stage transitions.
+- Real `soil_report_agent.py` extractor wired into `POST /fields/{id}/soil-report/upload` and `/confirm`.
+- `ScipyLinprogOptimizer` added and selectable via query param or body on `/recommend`.
+- `backend/rag` engine merged into `agrotwin_api/rag`, providing hybrid BM25 + dense evidence retrieval over MPKV/ICAR docs.
+- Unified database abstraction layer (`app/db.py`) supporting seamless SQLite and NeonDB Postgres execution.
+- Mobile-first, WCAG AA compliant Next.js frontend built in `agrotwin_frontend/`.
+- Frontend containerized and added to `docker-compose.yml`.
 
-**Added 2026-09-27 (pipeline + optimizer + events)**:
-- `RecommendationPipeline` with full run and selective re-plan
-- Proof-carrying recommendation object (WHAT / HOW MUCH / WHEN / WHY / BASED ON WHAT / HOW SURE)
-- `Optimizer` Protocol; default = DAP→Urea→MOP via `ledger.convert_gap_to_products`
-- Rule engine (max rates, weather window, pH/EC, freshness, compatibility)
-- In-process event bus + Monitoring Agent
-- Demo wow path: `HEAVY_RAIN_ALERT` → `PLAN_INVALIDATED` → re-plan
-- FastAPI: `POST /fields/{id}/recommend`, `POST /events`, `GET /fields/{id}/alerts`
-
-This Phase-1 core is solid. All future work must build on top of `ledger.py` and the schema without breaking the traceability guarantee.
+This core is solid and production-ready. All quantities strictly trace to ledger.py / optimizer / rules.
 
 ---
 

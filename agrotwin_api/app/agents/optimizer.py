@@ -263,7 +263,7 @@ def compare_all_demo_fields(conn: sqlite3.Connection) -> list[dict]:
     from .. import ledger as ledger_module
 
     fields = conn.execute(
-        "SELECT * FROM fields WHERE is_synthetic = 1"
+        "SELECT * FROM field_active_crop WHERE is_synthetic = TRUE"
     ).fetchall()
 
     results = []

@@ -9,28 +9,63 @@ import sqlite3
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from datetime import datetime
 
+from ..agents import soil_report_agent
 from ..agents.monitoring_agent import get_alerts, get_monitoring_agent
 from ..agents.orchestrator import request_replan, run_orchestrated_ledger
 from ..core.event_bus import get_bus
 from ..core.events import Event
-from .schemas import EventIn, RecommendRequest, RecommendationOut, SoilReportConfirmRequest, WhatIfRequest, OverrideRequest
-from ..core.ocr import save_upload_file, run_ocr_on_file
+from .schemas import (
+    CropAssignRequest,
+    EventIn,
+    FarmerCreateRequest,
+    FieldCreateRequest,
+    RecommendRequest,
+    RecommendationOut,
+    SoilReportConfirmRequest,
+    WhatIfRequest,
+    OverrideRequest,
+)
+from ..core.ocr import save_upload_file, run_ocr_on_file, run_ocr_pipeline, get_ocr_reader
 
 router = APIRouter()
 
 
-def get_db_path() -> str:
-    return os.environ.get(
-        "AGROTWIN_DB",
-        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "agrotwin.db")),
-    )
+@router.get("/ocr/health")
+def ocr_health():
+    """Check status and readiness of the EasyOCR machine learning engine."""
+    import torch
+    reader = get_ocr_reader()
+    return {
+        "status": "ready" if reader is not None else "degraded",
+        "engine": "EasyOCR (PyTorch)",
+        "cuda_available": torch.cuda.is_available(),
+        "device": "cuda" if torch.cuda.is_available() else "cpu",
+        "supported_extensions": [".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff", ".pdf", ".txt", ".csv"],
+        "version": "1.7.2",
+    }
+
+
+@router.post("/ocr/extract")
+@router.post("/api/ocr/extract")
+async def extract_ocr_standalone(
+    file: UploadFile = File(...),
+):
+    """
+    Direct, standalone Real OCR API.
+    Upload any soil test report (image / scanned PDF / digital PDF / text) to receive
+    actual extracted nutrient values, confidence scores, and raw detected blocks.
+    No prior field registration required.
+    """
+    contents = await file.read()
+    filename = file.filename or "report.png"
+    return run_ocr_pipeline(contents, filename)
+
+
+from ..db import get_db_connection, _json_load
 
 
 def get_conn():
-    path = get_db_path()
-    conn = sqlite3.connect(path)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
+    conn = get_db_connection()
     try:
         yield conn
     finally:
@@ -85,7 +120,7 @@ def get_twin(field_id: str, conn: sqlite3.Connection = Depends(get_conn)):
     plan = None
     if rec:
         try:
-            plan = json.loads(rec["plan_json"] or "{}")
+            plan = _json_load(rec["plan_json"])
         except json.JSONDecodeError:
             plan = {"raw": rec["plan_json"]}
         plan["status_db"] = rec["status"]
@@ -112,6 +147,7 @@ def recommend(
             row,
             agents=body.agents,
             mock_weather=body.mock_weather,
+            optimizer=body.optimizer,
         )
     else:
         result = run_orchestrated_ledger(
@@ -119,6 +155,7 @@ def recommend(
             row,
             mock_weather=body.mock_weather,
             farmer_input=body.farmer_input,
+            optimizer=body.optimizer,
         )
     return result
 
@@ -134,7 +171,7 @@ def latest_recommendation(field_id: str, conn: sqlite3.Connection = Depends(get_
     if rec is None:
         raise HTTPException(status_code=404, detail="No recommendation yet")
     try:
-        plan = json.loads(rec["plan_json"] or "{}")
+        plan = _json_load(rec["plan_json"])
     except json.JSONDecodeError:
         plan = {}
     plan["status_db"] = rec["status"]
@@ -194,7 +231,7 @@ def inject_event(body: EventIn, conn: sqlite3.Connection = Depends(get_conn)):
     plan: dict = {}
     if latest:
         try:
-            plan = json.loads(latest["plan_json"] or "{}")
+            plan = _json_load(latest["plan_json"])
         except json.JSONDecodeError:
             plan = {}
         plan["status_db"] = latest["status"]
@@ -217,6 +254,69 @@ def inject_event(body: EventIn, conn: sqlite3.Connection = Depends(get_conn)):
     }
 
 
+@router.post("/fields/{field_id}/crop")
+def assign_crop(
+    field_id: str,
+    body: CropAssignRequest,
+    conn: sqlite3.Connection = Depends(get_conn),
+):
+    """
+    Assign or update a field's active crop, sowing date, stage, and recommendation type.
+    """
+    row = _field_row(conn, field_id)
+    crop = conn.execute(
+        "SELECT crop_id FROM crops WHERE UPPER(crop_code) = ?",
+        (body.crop_code.upper().strip(),),
+    ).fetchone()
+    if crop is None:
+        raise HTTPException(status_code=400, detail=f"Unknown crop_code: {body.crop_code}")
+    crop_id = crop["crop_id"]
+
+    # Deactivate previous active crop
+    conn.execute(
+        "UPDATE field_crops SET is_active = FALSE WHERE field_id = ?",
+        (row["field_id"],),
+    )
+
+    cur = conn.cursor()
+    cur.execute(
+        """INSERT INTO field_crops
+           (field_id, crop_id, variety, sowing_date, current_stage,
+            recommendation_type, target_yield_kg_ha, is_active)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 1)""",
+        (
+            row["field_id"],
+            crop_id,
+            body.variety,
+            body.sowing_date,
+            body.current_stage,
+            body.recommendation_type,
+            body.target_yield_kg_ha,
+        ),
+    )
+    conn.commit()
+
+    monitor = get_monitoring_agent()
+    monitor.bind(conn)
+    event = Event.create(
+        "CROP_STAGE_CHANGED",
+        field_id=row["field_id"],
+        field_code=row["field_code"],
+        payload=body.model_dump(),
+        actor="farmer",
+    )
+    get_bus().publish(event, conn=conn)
+
+    return {
+        "status": "success",
+        "field_id": row["field_id"],
+        "crop_id": crop_id,
+        "crop_code": body.crop_code.upper().strip(),
+        "current_stage": body.current_stage,
+        "recommendation_type": body.recommendation_type,
+    }
+
+
 @router.post("/fields/{field_id}/soil-report/upload")
 def upload_soil_report(
     field_id: str,
@@ -224,16 +324,25 @@ def upload_soil_report(
     conn: sqlite3.Connection = Depends(get_conn)
 ):
     """
-    Step 1: Upload a soil report, run OCR, and return extracted fields.
-    The frontend should present this to the farmer for confirmation.
+    Step 1: Upload a soil report, run real extraction via soil_report_agent,
+    and return extracted fields with per-field confidence.
     """
     row = _field_row(conn, field_id)
-    file_path = save_upload_file(file, file.filename)
-    extracted_data = run_ocr_on_file(file_path)
+    contents = file.file.read()
+    res = soil_report_agent.process_upload(
+        conn,
+        row["field_id"],
+        file.filename or "report.txt",
+        contents,
+    )
     return {
-        "status": "extracted",
-        "file_path": file_path,
-        "extracted_data": extracted_data
+        "status": res["status"],
+        "upload_id": res["upload_id"],
+        "file_path": res["original_file_path"],
+        "extracted_data": res["extracted"],
+        "fields_needing_review": res["fields_needing_review"],
+        "engine": res["engine"],
+        "message": res["message"],
     }
 
 
@@ -247,8 +356,22 @@ def confirm_soil_report(
     Step 2: Farmer confirms the OCR values. Save to twin and trigger event.
     """
     row = _field_row(conn, field_id)
+    if body.upload_id:
+        # This singleton may hold a connection closed by an earlier request.
+        get_monitoring_agent().bind(conn)
+        confirmed = {
+            "n_kg_ha": body.soil_test.n_kg_ha,
+            "p_kg_ha": body.soil_test.p_kg_ha,
+            "k_kg_ha": body.soil_test.k_kg_ha,
+            "ph": body.soil_test.ph,
+            "oc_percent": body.soil_test.oc_percent,
+            "ec_ds_m": body.soil_test.ec_ds_m,
+            "test_date": body.soil_test.test_date,
+        }
+        res = soil_report_agent.confirm_and_write(conn, body.upload_id, confirmed, actor="farmer")
+        return {"status": "success", "message": "Soil report confirmed and Twin updated.", "details": res}
+
     test_date = body.soil_test.test_date or datetime.utcnow().strftime("%Y-%m-%d")
-    
     cur = conn.cursor()
     cur.execute(
         """INSERT INTO soil_tests 
@@ -306,7 +429,7 @@ def what_if_simulator(
     original_plan = {}
     if current_rec:
         try:
-            original_plan = json.loads(current_rec["plan_json"] or "{}")
+            original_plan = _json_load(current_rec["plan_json"])
         except:
             pass
 
@@ -319,11 +442,14 @@ def what_if_simulator(
         farmer_input["fertilizer_delta_pct"] = body.fertilizer_delta_pct
 
     # Re-run pipeline for simulated plan
-    simulated_plan = run_orchestrated_ledger(
+    from ..agents.orchestrator import get_pipeline
+    simulated_plan = get_pipeline().run(
         conn,
         row,
         mock_weather=mock_weather if mock_weather else None,
         farmer_input=farmer_input if farmer_input else None,
+        persist=False,
+        emit_events=False,
     )
     
     # We do NOT save the simulated plan to DB. It's just for frontend rendering.
@@ -337,6 +463,8 @@ def what_if_simulator(
             for k, v in simulated_plan["plan_kg_ha"].items():
                 if isinstance(v, (int, float)):
                     simulated_plan["plan_kg_ha"][k] = round(v * multiplier, 2)
+        # The pre-scaling narrative describes different quantities.
+        simulated_plan["narrative"] = ""
 
     return {
         "original_plan": original_plan,
@@ -352,6 +480,10 @@ def agronomist_override(
 ):
     """
     Agronomist overrides the plan.
+
+    NOTE (audit §4): doc 09 describes this route as /agronomist/override.
+    The actual path is /fields/{field_id}/override (here). The code is correct;
+    doc 09 has a path typo. Route kept as-is to avoid breaking existing tests.
     """
     row = _field_row(conn, field_id)
     now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
@@ -368,7 +500,7 @@ def agronomist_override(
     cur.execute(
         """INSERT INTO recommendations 
            (field_id, plan_json, status, confidence, confidence_reason, is_synthetic)
-           VALUES (?, ?, 'PROPOSED', 'HIGH', 'Agronomist Override', 0)""",
+           VALUES (?, ?, 'PROPOSED', 'HIGH', 'Agronomist Override', false)""",
         (row["field_id"], json.dumps(body.new_plan))
     )
     new_rec_id = cur.lastrowid
@@ -398,3 +530,84 @@ def agronomist_override(
 
     return {"status": "success", "new_recommendation_id": new_rec_id}
 
+
+@router.post("/farmers", status_code=201)
+def create_farmer(
+    body: FarmerCreateRequest,
+    conn=Depends(get_conn),
+):
+    """
+    Create a new farmer record.
+    region_id must reference an existing row in the regions table.
+    """
+    region = conn.execute(
+        "SELECT region_id FROM regions WHERE region_id = ?", (body.region_id,)
+    ).fetchone()
+    if region is None:
+        raise HTTPException(status_code=400, detail=f"region_id {body.region_id} not found")
+
+    cur = conn.cursor()
+    cur.execute(
+        """INSERT INTO farmers (region_id, full_name, mobile, preferred_lang)
+           VALUES (?, ?, ?, ?)""",
+        (body.region_id, body.full_name, body.mobile, body.preferred_lang),
+    )
+    conn.commit()
+    farmer_id = cur.lastrowid
+    return {"status": "created", "farmer_id": farmer_id}
+
+
+@router.post("/fields", status_code=201)
+def create_field(
+    body: FieldCreateRequest,
+    conn=Depends(get_conn),
+):
+    """
+    Create a new field.
+    region_id and district_id must reference existing rows.
+    field_code must be unique if supplied.
+    After creation use POST /fields/{id}/crop to assign a crop,
+    and POST /fields/{id}/soil-report/confirm to add a soil test,
+    before calling POST /fields/{id}/recommend.
+    """
+    if conn.execute(
+        "SELECT 1 FROM regions WHERE region_id = ?", (body.region_id,)
+    ).fetchone() is None:
+        raise HTTPException(status_code=400, detail=f"region_id {body.region_id} not found")
+    if conn.execute(
+        "SELECT 1 FROM districts WHERE district_id = ?", (body.district_id,)
+    ).fetchone() is None:
+        raise HTTPException(status_code=400, detail=f"district_id {body.district_id} not found")
+
+    cur = conn.cursor()
+    cur.execute(
+        """INSERT INTO fields
+           (region_id, district_id, taluka_id, farmer_id, field_code,
+            area_ha, soil_type, irrigation_type, lat, lon, is_synthetic)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            body.region_id,
+            body.district_id,
+            body.taluka_id,
+            body.farmer_id,
+            body.field_code,
+            body.area_ha,
+            body.soil_type,
+            body.irrigation_type,
+            body.lat,
+            body.lon,
+            False,   # is_synthetic: real farmer-created field
+        ),
+    )
+    conn.commit()
+    field_id = cur.lastrowid
+    return {
+        "status": "created",
+        "field_id": field_id,
+        "field_code": body.field_code,
+        "next_steps": [
+            f"POST /fields/{field_id}/crop   — assign active crop",
+            f"POST /fields/{field_id}/soil-report/confirm — add soil test",
+            f"POST /fields/{field_id}/recommend — generate recommendation",
+        ],
+    }

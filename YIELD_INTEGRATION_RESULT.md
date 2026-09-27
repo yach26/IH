@@ -1,5 +1,8 @@
 # Yield integration result
 
+Historical pre-Groq validation; see `GROQ_MERGE_VALIDATION.md` for the current
+merged ledger conversion, demo results, and additional checks.
+
 Implemented and validated on main. This report accompanies the yield integration commit.
 
 ## Changes

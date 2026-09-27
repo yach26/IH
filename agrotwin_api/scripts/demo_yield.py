@@ -22,11 +22,7 @@ def build_demo(conn):
     crops = seed_data.seed_crops(conn)
     seed_data.seed_fertilizer_products(conn)
     seed_data.seed_fertilizer_recommendations(conn, crops)
-    fields = seed_data.seed_fields_and_soil_tests(conn, region, districts, crops)
-    for code, meta in fields.items():
-        conn.execute('INSERT INTO field_crops (field_id,crop_id,current_stage,recommendation_type,is_active) VALUES (?,?,?,?,1)',
-                     (meta['field_id'], crops[meta['crop_code']], meta['current_stage'],
-                      seed_data.RECOMMENDATION_TYPE_BY_RECORD[code]))
+    seed_data.seed_fields_and_soil_tests(conn, region, districts, crops)
     conn.commit()
 
 
@@ -40,6 +36,9 @@ if __name__ == '__main__':
         build_demo(conn)
         conn.close()
         os.environ['AGROTWIN_DB'] = path
+        # This demo always uses its disposable SQLite database, even on hosts
+        # configured for Neon/PostgreSQL. Never connect the demo to production.
+        os.environ.pop('DATABASE_URL', None)
         if args.serve:
             import uvicorn
             print('Synthetic demo: http://127.0.0.1:8000/fields/SYN-003/yield-estimate?rainfall_mm_season=1100')

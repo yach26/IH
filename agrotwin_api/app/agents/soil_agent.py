@@ -93,7 +93,7 @@ def write_soil_test(
             ec_ds_m, source, is_synthetic, label_note)
            VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
         (field_id, test_date, n_kg_ha, p_kg_ha, k_kg_ha,
-         ph, oc_percent, ec_ds_m, source, int(is_synthetic), label_note),
+         ph, oc_percent, ec_ds_m, source, is_synthetic, label_note),
     )
     conn.commit()
     return cur.lastrowid

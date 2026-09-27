@@ -455,7 +455,7 @@ class TestTwinState:
 
     def test_compute_confidence_two_flags_is_low(self):
         from app.agents.twin_state import compute_confidence
-        assert compute_confidence(["P_PROXY (note)", "DERIVED_DENSITY (note)"]) == "LOW"
+        assert compute_confidence(["P_CONVERTED_TO_P2O5 (note)", "DERIVED_DENSITY (note)"]) == "LOW"
 
     def test_compute_confidence_abstain_flag_short_circuits(self):
         from app.agents.twin_state import compute_confidence

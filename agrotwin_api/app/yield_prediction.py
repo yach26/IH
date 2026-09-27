@@ -70,7 +70,7 @@ def _estimate(conn, field_row, result, rainfall):
                             (field_row["district_id"],)).fetchone()
     if result.get("crop") and result["crop"] not in ("BANANA", "SUGARCANE", "COTTON", "SOYBEAN"):
         return abstain("Crop is outside the four trained pilot crops.")
-    if not district or district[0] not in ("Kolhapur", "Jalgaon"):
+    if not district or district["district_name"] not in ("Kolhapur", "Jalgaon"):
         return abstain("District is outside the trained Kolhapur/Jalgaon scope.")
     if result["status"] == "ABSTAIN":
         return abstain("Ledger abstained: " + result.get("reason", "missing inputs"))
@@ -86,7 +86,9 @@ def _estimate(conn, field_row, result, rainfall):
         return abstain("Complete finite nonnegative soil values and seasonal rainfall are required, including pH and organic carbon.")
     if not 3 <= float(soil["ph"]) <= 11:
         return abstain("Soil pH is outside supported physical bounds (3–11).")
-    soil["district"] = district[0]
+    # PostgreSQL NUMERIC values are Decimal; workers receive JSON-native floats.
+    soil = {key: float(value) for key, value in soil.items()}
+    soil["district"] = district["district_name"]
     products = ledger.get_products(conn)
     applied = dict(N=0.0, P2O5=0.0, K2O=0.0)
     for key, qty in result["plan_kg_ha"].items():
@@ -110,9 +112,10 @@ def _estimate(conn, field_row, result, rainfall):
     prediction["inputs"] = {"rainfall_mm_season": rainfall, "rainfall_source": "caller_supplied",
                             "fertilizer_plan": plan}
     prediction["caveats"].extend(result.get("flags", []))
-    rain_bounds = (900, 1300) if district[0] == "Kolhapur" else (550, 850)
+    rain_bounds = (900, 1300) if soil["district"] == "Kolhapur" else (550, 850)
     if not rain_bounds[0] <= rainfall <= rain_bounds[1]:
-        prediction["caveats"].append(f"Seasonal rainfall is outside the synthetic training range for {district[0]} ({rain_bounds[0]}–{rain_bounds[1]} mm).")
+        prediction["caveats"].append(f"Seasonal rainfall is outside the synthetic training range for {soil['district']} ({rain_bounds[0]}–{rain_bounds[1]} mm).")
+    prediction["caveats"].append("The supplied yield model uses the original soil-P proxy features; the current fertilizer ledger converts elemental P to P2O5. Model features are preserved to match training.")
     if any(not 0.4 <= applied[n] / result["required"][n] <= 1.3 for n in applied):
         prediction["caveats"].append("This plan includes nutrient rates outside the synthetic training range (40–130% of RDF); yield is an extrapolation.")
     return prediction

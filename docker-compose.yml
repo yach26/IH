@@ -1,4 +1,5 @@
 version: '3.8'
+
 services:
   api:
     build:
@@ -11,5 +12,21 @@ services:
       - ./agrotwin_api/agrotwin.db:/app/agrotwin.db
       - ./uploads:/app/uploads
     environment:
+      - DATABASE_URL=${DATABASE_URL:-}
       - AGROTWIN_DB=/app/agrotwin.db
       - AGROTWIN_UPLOADS=/app/uploads
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+      - GROQ_MODEL=${GROQ_MODEL:-llama-3.3-70b-versatile}
+      - XAI_API_KEY=${XAI_API_KEY:-}
+      - XAI_MODEL=${XAI_MODEL:-grok-4.3}
+
+  frontend:
+    build:
+      context: ./agrotwin_frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    depends_on:
+      - api

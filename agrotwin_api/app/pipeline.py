@@ -27,9 +27,10 @@ from .agents import crop_agent, knowledge_agent, soil_agent, weather_agent
 from .agents.twin_state import compute_confidence, make_empty_twin_state
 from .core.event_bus import get_bus
 from .core.events import Event, EventType
-from .core.optimizer import HeuristicOptimizer, Optimizer, OptimizerPlan
+from .core.optimizer import HeuristicOptimizer, Optimizer, OptimizerPlan, get_optimizer
 from .core.proof import assemble_proof
 from .core.rules import RuleEngine
+from .db import _json_load
 
 FULL_STEPS = (
     "input_validation",
@@ -89,12 +90,16 @@ class RecommendationPipeline:
         field_row: sqlite3.Row,
         *,
         agents: Iterable[str] | None = None,
+        optimizer: Optimizer | str | None = None,
         mock_weather: dict | None = None,
         farmer_input: dict | None = None,
         previous_plan: dict | None = None,
         emit_events: bool = True,
         persist: bool = True,
     ) -> dict[str, Any]:
+        opt = self.optimizer
+        if optimizer:
+            opt = get_optimizer(optimizer) if isinstance(optimizer, str) else optimizer
         field_id = field_row["field_id"]
         field_code = field_row["field_code"]
         mode = "full" if not agents else "partial_replan"
@@ -252,16 +257,17 @@ class RecommendationPipeline:
         twin["flags"].extend(ledger_result.get("flags") or [])
         twin["current_plan"] = ledger_result
 
-        # ── 7. Optimizer (heuristic by default) ─────────────────────────
+        # ── 7. Optimizer (heuristic by default, or linprog) ─────────────
         optimizer_plan: OptimizerPlan | None = None
         optimizer_dict: dict | None = None
         if "optimizer" in requested and ledger_result.get("status") != "ABSTAIN":
             agents_run.append("optimizer")
-            optimizer_plan = self.optimizer.optimize(twin, candidates=None)
-            # Enforce: quantities must match ledger heuristic (no silent swap)
+            optimizer_plan = opt.optimize(twin, candidates=None)
+            # Enforce: quantities must match ledger heuristic if using heuristic
             ledger_qty = ledger_result.get("plan_kg_ha") or {}
             optimizer_dict = {
-                "status": "OK",
+                "status": optimizer_plan.meta.get("status", "OK"),
+                "flag": optimizer_plan.meta.get("flag", ""),
                 "plan_kg_ha": optimizer_plan.plan_kg_ha,
                 "total_kg_ha": optimizer_plan.total_kg_ha,
                 "cost_estimate": optimizer_plan.cost_estimate,
@@ -270,15 +276,16 @@ class RecommendationPipeline:
                 "optimizer_id": optimizer_plan.optimizer_id,
                 "message": optimizer_plan.message,
             }
-            # Prefer ledger plan_kg_ha as numeric truth; optimizer must not drift.
-            for k in ("DAP_kg_ha", "UREA_kg_ha", "MOP_kg_ha"):
-                if k in ledger_qty and k in optimizer_plan.plan_kg_ha:
-                    if float(optimizer_plan.plan_kg_ha[k]) != float(ledger_qty[k]):
-                        optimizer_dict["flag"] = (
-                            "OPTIMIZER_LEDGER_MISMATCH — falling back to ledger quantities"
-                        )
-                        optimizer_plan.plan_kg_ha = ledger_qty
-                        optimizer_dict["plan_kg_ha"] = ledger_qty
+            # Prefer ledger plan_kg_ha as numeric truth when heuristic is selected
+            if getattr(opt, "optimizer_id", "") == "heuristic_dap_urea_mop":
+                for k in ("DAP_kg_ha", "UREA_kg_ha", "MOP_kg_ha"):
+                    if k in ledger_qty and k in optimizer_plan.plan_kg_ha:
+                        if float(optimizer_plan.plan_kg_ha[k]) != float(ledger_qty[k]):
+                            optimizer_dict["flag"] = (
+                                "OPTIMIZER_LEDGER_MISMATCH — falling back to ledger quantities"
+                            )
+                            optimizer_plan.plan_kg_ha = ledger_qty
+                            optimizer_dict["plan_kg_ha"] = ledger_qty
             twin["flags"].extend(
                 [optimizer_dict[k] for k in ("flag",) if optimizer_dict.get(k)]
             )
@@ -384,11 +391,15 @@ class RecommendationPipeline:
         )
         twin["current_plan"] = proof
 
+        # Narrative annotates the finalized deterministic plan; never changes quantities.
+        from .agents.report_agent import compile_report
+        proof["narrative"] = compile_report(proof)["narrative"]
+
         # ── 11. Persist + events ────────────────────────────────────────
         rec_id = None
         if persist and "persist" in requested:
             agents_run.append("persist")
-            rec_id = self._persist(conn, proof, previous_plan=previous_plan if mode == "partial_replan" else None)
+            rec_id = self._persist(conn, proof, previous_plan=previous_plan)
             proof["recommendation_id"] = rec_id
             audit.append({"step": "persist", "recommendation_id": rec_id})
 
@@ -472,7 +483,7 @@ class RecommendationPipeline:
                 vals.append(farmer_input["recommendation_type"])
             vals.append(field_id)
             conn.execute(
-                f"UPDATE field_crops SET {', '.join(sets)} WHERE field_id = ? AND is_active = 1",
+                f"UPDATE field_crops SET {', '.join(sets)} WHERE field_id = ? AND is_active = TRUE",
                 vals,
             )
             conn.commit()
@@ -487,8 +498,8 @@ class RecommendationPipeline:
         out = []
         for r in rows:
             try:
-                plan = json.loads(r["plan_json"] or "{}")
-            except json.JSONDecodeError:
+                plan = _json_load(r["plan_json"])
+            except (json.JSONDecodeError, TypeError):
                 plan = {}
             plan["recommendation_id"] = r["recommendation_id"]
             plan["status_db"] = r["status"]

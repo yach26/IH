@@ -24,6 +24,7 @@ from typing import Any
 from ..core.event_bus import get_bus
 from ..core.events import Event, EventType
 from . import soil_agent
+from ..db import _json_load
 
 CONFIDENCE_REVIEW_THRESHOLD = 0.85
 UPLOAD_DIR = os.path.abspath(
@@ -77,44 +78,36 @@ def extract_from_text(text: str) -> dict[str, dict[str, Any]]:
 
 def extract_from_bytes(filename: str, data: bytes) -> tuple[dict[str, dict[str, Any]], str]:
     """
-    Decode text files directly. For images/PDF try optional OCR engines,
-    then fall back to utf-8 decode (useful for fixture .txt reports).
+    Extract structured soil nutrients using the unified real OCR engine.
+    Supports images (EasyOCR + OpenCV), PDFs (pypdf digital + scanned), and plain text.
     Returns (extracted, engine_name).
     """
-    name = (filename or "").lower()
-    if name.endswith((".txt", ".md", ".csv")) or not name:
+    try:
+        from ..core.ocr import run_ocr_pipeline
+
+        res = run_ocr_pipeline(data, filename)
+        # Ensure format compatibility: {field: {"value": ..., "confidence": ...}}
+        extracted: dict[str, dict[str, Any]] = {}
+        for k, v in res.get("extracted_data", {}).items():
+            extracted[k] = {
+                "value": v.get("value"),
+                "confidence": v.get("confidence", 0.0),
+            }
+        engine = res.get("engine", "easyocr")
+        if all(v["value"] is None for v in extracted.values()):
+            for k in extracted:
+                extracted[k]["confidence"] = 0.0
+            return extracted, "ocr_failed"
+        return extracted, engine
+    except Exception:
+        # Last resort fallback: treat as text so tests/fixtures work
         text = data.decode("utf-8", errors="replace")
-        return extract_from_text(text), "regex_text"
-
-    ocr_text, engine = _try_ocr(data, name)
-    if ocr_text:
-        return extract_from_text(ocr_text), engine
-
-    # Last resort: treat as text so tests/manual paste still work
-    text = data.decode("utf-8", errors="replace")
-    extracted = extract_from_text(text)
-    if all(v["value"] is None for v in extracted.values()):
-        for k in extracted:
-            extracted[k]["confidence"] = 0.0
-        return extracted, "ocr_failed"
-    return extracted, "regex_fallback"
-
-
-def _try_ocr(data: bytes, name: str) -> tuple[str | None, str]:
-    """Optional PaddleOCR / EasyOCR. Never required for the MVP path."""
-    try:
-        if name.endswith(".pdf"):
-            return None, "pdf_not_decoded"
-    except Exception:
-        pass
-    try:
-        import easyocr  # type: ignore
-
-        reader = easyocr.Reader(["en"], gpu=False)
-        # EasyOCR wants a file path; skip in-memory for MVP
-        return None, "easyocr_skipped_in_memory"
-    except Exception:
-        return None, "no_ocr_engine"
+        extracted = extract_from_text(text)
+        if all(v["value"] is None for v in extracted.values()):
+            for k in extracted:
+                extracted[k]["confidence"] = 0.0
+            return extracted, "ocr_failed"
+        return extracted, "regex_fallback"
 
 
 def needs_review(extracted: dict[str, dict[str, Any]]) -> list[str]:
@@ -162,8 +155,8 @@ def get_upload(conn: sqlite3.Connection, upload_id: int) -> dict | None:
         return None
     data = dict(row)
     try:
-        data["extracted"] = json.loads(data["extracted_json"] or "{}")
-    except json.JSONDecodeError:
+        data["extracted"] = _json_load(data["extracted_json"])
+    except (json.JSONDecodeError, TypeError):
         data["extracted"] = {}
     return data
 

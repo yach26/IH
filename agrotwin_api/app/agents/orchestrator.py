@@ -29,10 +29,15 @@ def run_orchestrated_ledger(
     field_row: sqlite3.Row,
     mock_weather: dict | None = None,
     farmer_input: dict | None = None,
+    optimizer: str | None = None,
 ) -> dict:
     """Full pipeline run (Soil → Crop → Weather → Ledger → Optimizer → Validation)."""
     return get_pipeline().run(
-        conn, field_row, mock_weather=mock_weather, farmer_input=farmer_input
+        conn,
+        field_row,
+        mock_weather=mock_weather,
+        farmer_input=farmer_input,
+        optimizer=optimizer,
     )
 
 
@@ -42,6 +47,7 @@ def request_replan(
     agents: Iterable[str],
     mock_weather: dict | None = None,
     previous_plan: dict | None = None,
+    optimizer: str | None = None,
 ) -> dict:
     """Selective re-plan: re-run only `agents` plus knowledge/confidence/persist."""
     return get_pipeline().run(
@@ -50,6 +56,7 @@ def request_replan(
         agents=list(agents),
         mock_weather=mock_weather,
         previous_plan=previous_plan,
+        optimizer=optimizer,
     )
 
 

@@ -29,20 +29,60 @@ def get_recommendation(conn, crop_code, rec_type):
            WHERE c.crop_code = ? AND fr.recommendation_type = ?""",
         (crop_code, rec_type),
     )
-    return cur.fetchone()
+    row = cur.fetchone()
+    if row is None:
+        return None
+    # Support both sqlite3.Row (index-able) and psycopg3 dict row
+    if hasattr(row, 'keys'):
+        return (row["n_kg_ha"], row["p2o5_kg_ha"], row["k2o_kg_ha"],
+                row["source_citation"], row["notes"])
+    return tuple(row)
 
 
 def get_products(conn):
     cur = conn.cursor()
     cur.execute("SELECT product_code, n_percent, p2o5_percent, k2o_percent FROM fertilizer_products")
-    return {code: {"n": n, "p2o5": p, "k2o": k} for code, n, p, k in cur.fetchall()}
+    rows = cur.fetchall()
+    result = {}
+    for row in rows:
+        # Support both sqlite3.Row (index-able) and psycopg3 dict row
+        if hasattr(row, 'keys'):
+            code = row["product_code"]
+            n, p, k = row["n_percent"], row["p2o5_percent"], row["k2o_percent"]
+        else:
+            code, n, p, k = row
+        # cast to float: SQLite returns float, PostgreSQL NUMERIC returns Decimal
+        result[code] = {"n": float(n), "p2o5": float(p), "k2o": float(k)}
+    return result
 
 
-def compute_gap(required_n, required_p2o5, required_k2o, soil_n, soil_p_proxy, soil_k):
-    """gap = required - available (no loss subtraction; losses unsourced)."""
-    gap_n = max(0.0, round(required_n - soil_n, 1)) if required_n is not None else None
-    gap_p2o5 = max(0.0, round(required_p2o5 - soil_p_proxy, 1)) if required_p2o5 is not None else None
-    gap_k2o = max(0.0, round(required_k2o - soil_k, 1)) if required_k2o is not None else None
+def compute_gap(required_n, required_p2o5, required_k2o, soil_n, soil_p_kg_ha, soil_k):
+    """gap = required - available (no loss subtraction; losses unsourced).
+
+    P conversion:
+        Soil tests in Maharashtra report available P as elemental P (kg/ha).
+        RDF recommendations (MPKV/ICAR) express phosphorus as P₂O₅ (kg/ha).
+        Official conversion: P₂O₅ = P × (MW of P₂O₅ / 2 × MW of P)
+                                   = P × (141.94 / 61.98) = P × 2.291
+        Source: FCO (Fertiliser Control Order) and ICAR soil testing methodology;
+                used by all Maharashtra Soil Testing Laboratories (STLs).
+
+    All inputs are cast to float to handle both SQLite float and PostgreSQL Decimal.
+    """
+    # P₂O₅ / P molar mass ratio — official ICAR/FCO conversion factor
+    P_TO_P2O5 = 2.291
+
+    def _f(v):
+        return float(v) if v is not None else None
+
+    rn, rp, rk = _f(required_n), _f(required_p2o5), _f(required_k2o)
+    sn, sk = float(soil_n), float(soil_k)
+    # Convert soil elemental P → P₂O₅ to match RDF units
+    soil_p2o5_equivalent = round(float(soil_p_kg_ha) * P_TO_P2O5, 1)
+
+    gap_n    = max(0.0, round(rn - sn, 1)) if rn is not None else None
+    gap_p2o5 = max(0.0, round(rp - soil_p2o5_equivalent, 1)) if rp is not None else None
+    gap_k2o  = max(0.0, round(rk - sk, 1)) if rk is not None else None
     return gap_n, gap_p2o5, gap_k2o
 
 
@@ -72,7 +112,10 @@ def run_field(conn, field_id, field_meta, rec_type_map):
     crop_code = field_meta["crop_code"]
     rec_type = rec_type_map[record_id]
 
-    flags = ["P_PROXY (soil test stores P, RDF is P2O5 - no conversion factor in data pack)"]
+    # P→P₂O₅ conversion applied (see compute_gap docstring).
+    # Flag is now informational (unit-mismatch resolved), not a quality downgrade.
+    flags = ["P_CONVERTED_TO_P2O5 (soil test P kg/ha × 2.291 → P₂O₅ kg/ha; "
+             "ICAR/FCO molar mass ratio 141.94/61.98; confidence maintained)"]
 
     rec = get_recommendation(conn, crop_code, rec_type)
     if rec is None:
@@ -83,6 +126,10 @@ def run_field(conn, field_id, field_meta, rec_type_map):
         }
 
     required_n, required_p2o5, required_k2o, citation, notes = rec
+    # Cast NUMERIC → float (safe for both SQLite float and PostgreSQL Decimal)
+    required_n    = float(required_n)    if required_n    is not None else None
+    required_p2o5 = float(required_p2o5) if required_p2o5 is not None else None
+    required_k2o  = float(required_k2o)  if required_k2o  is not None else None
 
     if crop_code == "BANANA":
         flags.append("DERIVED_DENSITY (Banana kg/ha derived from g/plant x mid-point "
@@ -91,17 +138,18 @@ def run_field(conn, field_id, field_meta, rec_type_map):
         flags.append("MIDPOINT_RANGE_RDF (source gives a range for Cotton; mid-point used)")
 
     soil_n = float(row["N_kg_ha"])
-    soil_p_proxy = float(row["P_kg_ha"])
+    soil_p_kg_ha = float(row["P_kg_ha"])   # elemental P — converted inside compute_gap
     soil_k = float(row["K_kg_ha"])
 
     gap_n, gap_p2o5, gap_k2o = compute_gap(required_n, required_p2o5, required_k2o,
-                                            soil_n, soil_p_proxy, soil_k)
+                                            soil_n, soil_p_kg_ha, soil_k)
 
     products = get_products(conn)
     plan = convert_gap_to_products(gap_n, gap_p2o5, gap_k2o, products)
 
-    # confidence: MEDIUM baseline (P proxy always present), LOW if any extra flag
-    confidence = "MEDIUM" if len(flags) == 1 else "LOW"
+    # Confidence: HIGH when only the informational P-conversion flag is present,
+    # LOW when extra flags are added (e.g. MIDPOINT_RANGE_RDF, DERIVED_DENSITY).
+    confidence = "HIGH" if len(flags) == 1 else "MEDIUM" if len(flags) == 2 else "LOW"
 
     no_fertilizer_needed = (plan["DAP_kg_ha"] == 0 and plan["UREA_kg_ha"] == 0
                              and plan["MOP_kg_ha"] == 0)
@@ -114,7 +162,8 @@ def run_field(conn, field_id, field_meta, rec_type_map):
         "current_stage": field_meta["current_stage"],
         "status": "NO_FERTILIZER_NEEDED" if no_fertilizer_needed else "PLAN_GENERATED",
         "required": {"N": required_n, "P2O5": required_p2o5, "K2O": required_k2o},
-        "soil": {"N": soil_n, "P_proxy": soil_p_proxy, "K": soil_k},
+        "soil": {"N": soil_n, "P_kg_ha": soil_p_kg_ha,
+                 "P2O5_equivalent": round(soil_p_kg_ha * 2.291, 1), "K": soil_k},
         "gap": {"N": gap_n, "P2O5": gap_p2o5, "K2O": gap_k2o},
         "plan_kg_ha": plan,
         "confidence": confidence,

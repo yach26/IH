@@ -1,0 +1,29 @@
+....................................................................F... [ 51%]
+...................................................................      [100%]
+================================== FAILURES ===================================
+_____________________ test_real_easyocr_image_extraction ______________________
+
+sample_report_image_bytes = b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x02\xbc\x00\x00\x01^\x08\x02\x00\x00\x00\xe8\xbc[\x00\x00\x00<\xfeIDATx\...xe0\x82\xd0\x00\x00\x00\x00\\\x10\x1a\x00\x00\x00\x80\xf0\xf8\x7f\x86\xa6Pf\xf7\xd1\xbaE\x00\x00\x00\x00IEND\xaeB`\x82'
+
+    def test_real_easyocr_image_extraction(sample_report_image_bytes):
+        """Verifies that EasyOCR processes real image pixels and extracts nutrients."""
+        res = run_ocr_pipeline(sample_report_image_bytes, "soil_test.png")
+        assert res["status"] == "extracted"
+        assert res["engine"].startswith("easyocr")
+        data = res["extracted_data"]
+        # Check that actual numbers were recognized from the image
+        assert data["n_kg_ha"]["value"] is not None
+        assert abs(data["n_kg_ha"]["value"] - 215.5) < 5.0
+        assert data["ph"]["value"] is not None
+        assert 6.5 <= data["ph"]["value"] <= 8.0
+>       assert data["n_kg_ha"]["confidence"] > 0.5
+E       assert 0.479 > 0.5
+
+agrotwin_api\tests\test_ocr_pipeline.py:102: AssertionError
+=========================== short test summary info ===========================
+FAILED agrotwin_api/tests/test_ocr_pipeline.py::test_real_easyocr_image_extraction
+1 failed, 138 passed in 126.36s (0:02:06)
+C:\Users\Kailash Sharma\AppData\Local\Programs\Python\Python311\Lib\site-packages\pytest_asyncio\plugin.py:207: PytestDeprecationWarning: The configuration option "asyncio_default_fixture_loop_scope" is unset.
+The event loop scope for asynchronous fixtures will default to the fixture caching scope. Future versions of pytest-asyncio will default the loop scope for asynchronous fixtures to function scope. Set the default fixture loop scope explicitly in order to avoid unexpected behavior in the future. Valid fixture loop scopes are: "function", "class", "module", "package", "session"
+
+  warnings.warn(PytestDeprecationWarning(_DEFAULT_FIXTURE_LOOP_SCOPE_UNSET))

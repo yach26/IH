@@ -20,7 +20,17 @@ class SoilTestIn(BaseModel):
     original_file_path: str | None = None
 
 
+class CropAssignRequest(BaseModel):
+    crop_code: str
+    variety: str | None = None
+    sowing_date: str | None = None
+    current_stage: str | None = None
+    recommendation_type: str | None = None
+    target_yield_kg_ha: float | None = None
+
+
 class SoilReportConfirmRequest(BaseModel):
+    upload_id: int | None = None
     soil_test: SoilTestIn
 
 
@@ -40,6 +50,10 @@ class RecommendRequest(BaseModel):
     agents: list[str] | None = Field(
         default=None,
         description="If set, selective re-plan of these agents only.",
+    )
+    optimizer: str | None = Field(
+        default="heuristic",
+        description="Optimizer to use: 'heuristic' (default) or 'linprog' (scipy multi-objective).",
     )
     mock_weather: dict[str, Any] | None = None
     farmer_input: dict[str, Any] | None = None
@@ -80,3 +94,24 @@ class EventIn(BaseModel):
         }
     )
     actor: str = "demo"
+
+class FarmerCreateRequest(BaseModel):
+    """Create a new farmer. region_id must already exist."""
+    region_id: int
+    full_name: str | None = None
+    mobile: str | None = None
+    preferred_lang: str = "mr"
+
+
+class FieldCreateRequest(BaseModel):
+    """Create a new field. region_id and district_id must already exist."""
+    region_id: int
+    district_id: int
+    taluka_id: int | None = None
+    farmer_id: int | None = None
+    field_code: str | None = None
+    area_ha: float
+    soil_type: str | None = None
+    irrigation_type: str | None = None
+    lat: float | None = None
+    lon: float | None = None

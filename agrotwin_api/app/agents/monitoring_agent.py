@@ -20,6 +20,7 @@ from typing import Any, Callable
 
 from ..core.event_bus import get_bus
 from ..core.events import Event, EventType
+from ..db import _json_load
 
 # Legacy in-process registry (kept for existing unit tests)
 _handlers: list[tuple[str, Callable]] = []
@@ -135,7 +136,7 @@ def get_active_plan(conn: sqlite3.Connection, field_id: int) -> dict | None:
     if row is None:
         return None
     try:
-        plan = json.loads(row["plan_json"] or "{}")
+        plan = _json_load(row["plan_json"])
     except json.JSONDecodeError:
         plan = {}
     plan["recommendation_id"] = row["recommendation_id"]
