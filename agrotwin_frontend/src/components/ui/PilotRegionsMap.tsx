@@ -23,6 +23,25 @@ export default function PilotRegionsMap({ className = "w-full h-[420px]" }: Pilo
   const containerRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mapRef = useRef<any>(null);
+  const [regions, setRegions] = React.useState<PilotRegion[]>(PILOT_REGIONS);
+
+  useEffect(() => {
+    fetch('http://localhost:8000/fields')
+      .then(r => r.json())
+      .then((data: any[]) => {
+        if (data && data.length > 0) {
+          const dynamicRegions = data.map(d => ({
+            name: d.field_code || "Field",
+            lat: d.lat || 16.705,
+            lng: d.lon || 74.2433,
+            crops: d.crop_code || "Unknown",
+            district: "Active Region"
+          }));
+          setRegions(dynamicRegions);
+        }
+      })
+      .catch(err => console.error('Error fetching fields for map:', err));
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -45,7 +64,7 @@ export default function PilotRegionsMap({ className = "w-full h-[420px]" }: Pilo
       delete (L.Icon.Default.prototype as any)._getIconUrl;
 
       const map = L.map(containerRef.current, {
-        center: [18.5, 75.5],
+        center: [16.5, 74.5], // Centered closer to Kolhapur
         zoom: 7,
         zoomControl: true,
         scrollWheelZoom: false,
@@ -87,14 +106,14 @@ export default function PilotRegionsMap({ className = "w-full h-[420px]" }: Pilo
         popupAnchor: [0, -14],
       });
 
-      PILOT_REGIONS.forEach((region) => {
+      regions.forEach((region) => {
         const marker = L.marker([region.lat, region.lng], { icon: goldIcon }).addTo(map);
 
         marker.bindPopup(
           `<div style="font-family:sans-serif;min-width:130px;">
             <div style="font-weight:700;font-size:13px;color:#0F4D35;margin-bottom:4px;">${region.name}</div>
             <div style="font-size:11px;color:#666;margin-bottom:3px;">${region.district}</div>
-            <div style="font-size:11px;font-weight:600;color:#333;">Crops: ${region.crops}</div>
+            <div style="font-size:11px;font-weight:600;color:#333;">Crop: ${region.crops}</div>
           </div>`,
           { closeButton: false }
         );
@@ -115,7 +134,7 @@ export default function PilotRegionsMap({ className = "w-full h-[420px]" }: Pilo
         mapRef.current = null;
       }
     };
-  }, []);
+  }, [regions]);
 
   return (
     <>

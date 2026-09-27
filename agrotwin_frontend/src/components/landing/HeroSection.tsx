@@ -5,6 +5,27 @@ import { useLanguage } from '@/contexts/LanguageContext';
 
 export default function HeroSection() {
   const { t } = useLanguage();
+  const [liveField, setLiveField] = React.useState<{
+    fieldId: string;
+    crop: string;
+    growthStage: string;
+    soilHealthScore: number;
+    weather: { rainfall_mm_next_7d: number; condition: string };
+  } | null>(null);
+
+  React.useEffect(() => {
+    fetch('http://localhost:8000/fields/REAL-001/twin')
+      .then(r => r.json())
+      .then(data => setLiveField({
+        fieldId: data.fieldId,
+        crop: data.crop,
+        growthStage: data.growthStage,
+        soilHealthScore: data.soilHealthScore ?? 0,
+        weather: data.weather ?? { rainfall_mm_next_7d: 17, condition: 'Clear' },
+      }))
+      .catch(() => null);
+  }, []);
+
   return (
     <section className="relative pt-24 pb-32 overflow-hidden bg-[#FDFBF7]">
       <div className="container mx-auto px-6 max-w-7xl">
@@ -46,23 +67,35 @@ export default function HeroSection() {
               alt="Indian agricultural field" 
               className="absolute inset-0 w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-[2s] ease-out"
             />
-            {/* UI Overlays */}
+            {/* Live field info overlay */}
             <div className="absolute top-8 left-8 bg-[#FDFBF7]/95 backdrop-blur-sm p-4 rounded-sm shadow-lg border border-[#0F4D35]/10 w-64 animate-in fade-in slide-in-from-bottom-4 duration-1000 delay-300 fill-mode-both">
-              <div className="text-[10px] uppercase tracking-wider text-[#1a1a1a]/50 font-bold mb-1">Field A-104</div>
-              <div className="font-medium text-[#0F4D35] text-sm">Rice &middot; Tillering Stage</div>
+              <div className="text-[10px] uppercase tracking-wider text-[#1a1a1a]/50 font-bold mb-1">
+                {liveField ? `Field ${liveField.fieldId}` : 'Field REAL-001'}
+              </div>
+              <div className="font-medium text-[#0F4D35] text-sm">
+                {liveField ? `${liveField.crop} · ${liveField.growthStage}` : 'Loading live data…'}
+              </div>
             </div>
             
+            {/* Live soil health + weather overlay */}
             <div className="absolute bottom-12 right-8 bg-[#FDFBF7]/95 backdrop-blur-sm p-4 rounded-sm shadow-lg border border-[#0F4D35]/10 w-56 animate-in fade-in slide-in-from-bottom-4 duration-1000 delay-500 fill-mode-both">
               <div className="flex justify-between items-end mb-3 pb-3 border-b border-[#0F4D35]/10">
                 <div>
                   <div className="text-[10px] uppercase tracking-wider text-[#1a1a1a]/50 font-bold mb-1">Soil Health</div>
-                  <div className="font-medium text-[#0F4D35] text-xl">72<span className="text-sm text-[#1a1a1a]/40">/100</span></div>
+                  <div className="font-medium text-[#0F4D35] text-xl">
+                    {liveField ? liveField.soilHealthScore : '…'}
+                    <span className="text-sm text-[#1a1a1a]/40">/100</span>
+                  </div>
                 </div>
                 <div className="text-xs font-medium text-[#0F4D35]/70">N / P / K</div>
               </div>
               <div>
                 <div className="text-[10px] uppercase tracking-wider text-[#1a1a1a]/50 font-bold mb-1">{t('hero.weather')}</div>
-                <div className="font-medium text-[#0F4D35] text-sm">28&deg;C &middot; Rain forecast</div>
+                <div className="font-medium text-[#0F4D35] text-sm">
+                  {liveField
+                    ? `${liveField.weather.rainfall_mm_next_7d}mm forecast · ${liveField.weather.condition}`
+                    : '28°C · Rain forecast'}
+                </div>
               </div>
             </div>
           </div>

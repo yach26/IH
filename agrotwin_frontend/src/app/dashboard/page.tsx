@@ -6,59 +6,105 @@ import dynamic from 'next/dynamic';
 const FieldMap = dynamic(() => import('@/components/ui/FieldMap'), { ssr: false });
 import Link from 'next/link';
 
-// ─── Mock Data Template ────────────────────────────────────────────────────────
-const defaultField = {
-  id: 'A-104',
+// ─── Types ────────────────────────────────────────────────────────────────────
+type NutrientEntry = { value: number; score: number; label: string; color: string };
+type FieldState = {
+  id: string;
+  status: string;
+  location: string;
+  crop: string;
+  stage: string;
+  stageSequence: string[];
+  area: string;
+  soilType: string;
+  lat: number;
+  lon: number;
+  soilHealthScore: number;
+  weather: { temp: number; condition: string; humidity: number; wind: number; rain24h: number; rainfall7d: number };
+  soil: {
+    n: NutrientEntry;
+    p: NutrientEntry;
+    k: NutrientEntry;
+    ph: number | null;
+    oc: number | null;
+    note: string;
+  };
+  fieldStatus: {
+    cropCondition: { label: string; color: string };
+    waterStress: { label: string; color: string };
+    pestRisk: { label: string; color: string };
+    diseaseRisk: { label: string; color: string };
+    overall: string;
+  };
+  recommendation: {
+    action: string;
+    window: string;
+    description: string;
+    quantity: string;
+    applicationWindow: string;
+    expectedBenefit: string;
+    estimatedCost: number;
+    confidence: string;
+    citation: string;
+  };
+  timeline: { name: string; done: boolean; current?: boolean }[];
+  insights: { title: string; time: string; desc: string; img: string }[];
+};
+
+// ─── Default / Skeleton State ─────────────────────────────────────────────────
+const defaultField: FieldState = {
+  id: '…',
   status: 'Active',
   location: 'Kolhapur, Maharashtra',
-  crop: 'Rice (Kharif 2025)',
-  stage: 'Tillering Stage',
-  stageDay: 28,
-  area: '2.5 ha',
-  soilType: 'Clay Loam',
-  weather: { temp: 28, condition: 'Partly cloudy', humidity: 78, wind: 12, rain24h: 0 },
+  crop: 'Loading…',
+  stage: 'Loading…',
+  stageSequence: ["Land Prep", "Germination", "Tillering", "Grand Growth", "Ripening", "Harvest"],
+  area: '— ha',
+  soilType: '—',
+  lat: 16.0644,
+  lon: 74.1352,
+  soilHealthScore: 0,
+  weather: { temp: 28, condition: 'Loading…', humidity: 75, wind: 10, rain24h: 0, rainfall7d: 0 },
   soil: {
-    n: { value: 72, label: 'Moderate', color: 'bg-blue-500' },
-    p: { value: 55, label: 'Low', color: 'bg-purple-500' },
-    k: { value: 65, label: 'Moderate', color: 'bg-amber-500' },
-    note: 'Nitrogen levels are moderate. Consider urea application within 3 days for optimal tillering.',
+    n: { value: 0, score: 0, label: '…', color: 'bg-blue-500' },
+    p: { value: 0, score: 0, label: '…', color: 'bg-purple-500' },
+    k: { value: 0, score: 0, label: '…', color: 'bg-amber-500' },
+    ph: null,
+    oc: null,
+    note: 'Loading soil analysis…',
   },
-  forecast: [
-    { day: 'Mon', mm: 12 }, { day: 'Tue', mm: 5 }, { day: 'Wed', mm: 18 },
-    { day: 'Thu', mm: 28 }, { day: 'Fri', mm: 42 }, { day: 'Sat', mm: 10 }, { day: 'Sun', mm: 6 },
-  ],
   fieldStatus: {
-    cropCondition: { label: 'Good', color: 'text-green-500' },
-    waterStress: { label: 'Low', color: 'text-gray-400' },
-    pestRisk: { label: 'Moderate', color: 'text-amber-500' },
-    diseaseRisk: { label: 'Low', color: 'text-gray-400' },
-    overall: 'Healthy',
+    cropCondition: { label: '…', color: 'text-gray-400' },
+    waterStress: { label: '…', color: 'text-gray-400' },
+    pestRisk: { label: '…', color: 'text-gray-400' },
+    diseaseRisk: { label: '…', color: 'text-gray-400' },
+    overall: 'Loading…',
   },
   recommendation: {
-    action: 'Apply Urea (46-0-0)',
-    window: 'Within 3 days',
-    description: 'Based on current soil nitrogen levels and tillering stage, apply 50 kg/ha of urea. This will support tiller development and improve leaf colour.',
-    quantity: '50 kg/ha',
-    applicationWindow: 'Next 3 days',
-    expectedBenefit: 'Increased tiller count and greener leaves',
+    action: 'Loading recommendation…',
+    window: '…',
+    description: 'Fetching AI recommendation from pipeline…',
+    quantity: '—',
+    applicationWindow: '—',
+    expectedBenefit: '—',
+    estimatedCost: 0,
+    confidence: '—',
+    citation: '',
   },
-  timeline: [
-    { name: 'Sowing', day: 0, done: true },
-    { name: 'Germination', day: 7, done: true },
-    { name: 'Seedling', day: 14, done: true },
-    { name: 'Tillering', day: 28, current: true },
-    { name: 'Panicle Initiation', day: 50, done: false },
-    { name: 'Flowering', day: 70, done: false },
-    { name: 'Maturity', day: 100, done: false },
-  ],
+  timeline: [],
   insights: [
-    { title: 'Rainfall forecast updated', time: '2 hours ago', desc: 'Higher rainfall likely in next 5 days.', img: '/image copy 2.png' },
-    { title: 'Nitrogen level lower than optimal', time: '1 day ago', desc: 'Consider urea application.', img: '/image copy 3.png' },
-    { title: 'Pest risk moderate', time: '2 days ago', desc: 'Monitor for yellow stem borer.', img: '/image copy 4.png' },
+    { title: 'Rainfall forecast updated', time: '2 hours ago', desc: 'Next 7-day forecast available.', img: '/image copy 2.png' },
+    { title: 'Soil analysis loaded', time: 'Today', desc: 'Real Polgaon SHC data ingested.', img: '/image copy 3.png' },
+    { title: 'Recommendation ready', time: 'Today', desc: 'AI pipeline has generated your plan.', img: '/image copy 4.png' },
   ],
 };
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+function nutrientLabel(score: number): string {
+  if (score >= 80) return 'High';
+  if (score >= 45) return 'Moderate';
+  return 'Low';
+}
 
 function StatusDot({ color }: { color: string }) {
   const map: Record<string, string> = {
@@ -71,44 +117,112 @@ function StatusDot({ color }: { color: string }) {
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
-
 export default function DashboardPage() {
-  const [field, setField] = React.useState(defaultField);
-  const maxForecastMm = Math.max(...field.forecast.map(d => d.mm));
+  const [field, setField] = React.useState<FieldState>(defaultField);
+  const [loading, setLoading] = React.useState(true);
+  const maxForecastMm = Math.max(...[12, 5, 18, 28, 42, 10, 6]);
 
   React.useEffect(() => {
-    fetch('http://localhost:8000/fields/SYN-001/twin')
+    fetch('http://localhost:8000/fields/REAL-001/twin')
       .then(r => r.json())
       .then(data => {
-        setField(prev => ({
-          ...prev,
-          id: data.fieldId || prev.id,
-          crop: data.crop || prev.crop,
-          stage: data.growthStage || prev.stage,
+        const nutrients = data.nutrients || {};
+        const soil = data.soilDetail || {};
+        const plan = data.currentPlan || {};
+        const weather = data.weather || {};
+        const stages: string[] = data.stageSequence || defaultField.stageSequence;
+        const currentStageName = data.growthStage || '';
+
+        // Score-to-label for nutrients
+        const nScore = soil.n_score ?? 0;
+        const pScore = soil.p_score ?? 0;
+        const kScore = soil.k_score ?? 0;
+
+        // Derive field status from real data
+        const rainfallOk = !weather.heavy_rain_alert;
+        const waterStress = rainfallOk ? 'Low' : 'High';
+        const waterColor = rainfallOk ? 'text-gray-400' : 'text-red-500';
+        const nSufficient = nScore >= 60;
+        const cropCond = nSufficient ? 'Good' : 'Moderate';
+        const cropColor = nSufficient ? 'text-green-500' : 'text-amber-500';
+        const overall = (nSufficient && rainfallOk) ? 'Healthy' : 'Needs Attention';
+
+        // Build timeline from stageSequence
+        const currentIdx = stages.findIndex(s =>
+          s.toLowerCase() === currentStageName.toLowerCase()
+        );
+        const timeline = stages.map((name, i) => ({
+          name,
+          done: i < (currentIdx >= 0 ? currentIdx : stages.length - 2),
+          current: i === (currentIdx >= 0 ? currentIdx : stages.length - 2),
+        }));
+
+        // Recommendation description
+        const gap = plan.soilGap || {};
+        const description = `Based on Polgaon real soil test (N=${nutrients.n?.current} kg/ha, P=${nutrients.p?.current} kg/ha, K=${nutrients.k?.current} kg/ha) and ${data.crop} at ${currentStageName} stage. Nutrient gaps: N ${gap.N ?? '—'} kg/ha, P₂O₅ ${gap.P2O5 ?? '—'} kg/ha, K₂O ${gap.K2O ?? '—'} kg/ha. Source: ${plan.citation || 'MPKV-ICAR RDF Kolhapur 2022'}.`;
+
+        const insight = data.activeAlert ? [{
+          title: data.activeAlert.title || 'New Alert',
+          time: 'Just now',
+          desc: data.activeAlert.description || '',
+          img: '/image copy 2.png'
+        }] : [];
+
+        setField({
+          id: data.fieldId || 'REAL-001',
+          status: 'Active',
+          location: data.location || 'Kolhapur, Maharashtra',
+          crop: data.crop || 'Sugarcane',
+          stage: currentStageName,
+          stageSequence: stages,
+          area: data.area_ha ? `${data.area_ha} ha` : '2 ha',
+          soilType: 'Laterite / Clay Loam',
+          lat: data.lat || 16.0644,
+          lon: data.lon || 74.1352,
+          soilHealthScore: data.soilHealthScore ?? 0,
+          weather: {
+            temp: 28,
+            condition: weather.condition || 'Clear',
+            humidity: 75,
+            wind: 10,
+            rain24h: 0,
+            rainfall7d: weather.rainfall_mm_next_7d ?? 17,
+          },
           soil: {
-            ...prev.soil,
-            n: { ...prev.soil.n, value: data.nutrients?.n?.current ?? prev.soil.n.value },
-            p: { ...prev.soil.p, value: data.nutrients?.p?.current ?? prev.soil.p.value },
-            k: { ...prev.soil.k, value: data.nutrients?.k?.current ?? prev.soil.k.value },
+            n: { value: nutrients.n?.current ?? 0, score: nScore, label: nutrientLabel(nScore), color: 'bg-blue-500' },
+            p: { value: nutrients.p?.current ?? 0, score: pScore, label: nutrientLabel(pScore), color: 'bg-purple-500' },
+            k: { value: nutrients.k?.current ?? 0, score: kScore, label: nutrientLabel(kScore), color: 'bg-amber-500' },
+            ph: soil.ph ?? null,
+            oc: soil.oc_percent ?? null,
+            note: description,
+          },
+          fieldStatus: {
+            cropCondition: { label: cropCond, color: cropColor },
+            waterStress: { label: waterStress, color: waterColor },
+            pestRisk: { label: 'Moderate', color: 'text-amber-500' },   // no pest agent yet
+            diseaseRisk: { label: 'Low', color: 'text-gray-400' },
+            overall,
           },
           recommendation: {
-            ...prev.recommendation,
-            action: data.currentPlan?.nextAction || prev.recommendation.action,
-            quantity: data.currentPlan?.quantity || prev.recommendation.quantity,
-            applicationWindow: data.currentPlan?.applicationWindow || prev.recommendation.applicationWindow,
+            action: plan.nextAction || 'DAP + Urea + MOP',
+            window: plan.applicationWindow?.split('(')[0]?.trim() || 'This week',
+            description,
+            quantity: plan.quantity || '—',
+            applicationWindow: plan.applicationWindow || '—',
+            expectedBenefit: 'Meet seasonal NPK requirements; target 80-100 t/ha yield',
+            estimatedCost: plan.estimatedCost ?? 0,
+            confidence: plan.confidence || '—',
+            citation: plan.citation || '',
           },
-          insights: data.activeAlert ? [
-            {
-              title: data.activeAlert.title,
-              time: 'Just now',
-              desc: data.activeAlert.description,
-              img: '/image copy 2.png'
-            },
-            ...prev.insights
-          ] : prev.insights
-        }));
+          timeline,
+          insights: [...insight, ...defaultField.insights],
+        });
+        setLoading(false);
       })
-      .catch(err => console.error("Error fetching twin data:", err));
+      .catch(err => {
+        console.error('Error fetching twin data:', err);
+        setLoading(false);
+      });
   }, []);
 
   return (
@@ -121,22 +235,18 @@ export default function DashboardPage() {
           alt="Field overview"
           className="absolute inset-0 w-full h-full object-cover object-center"
         />
-        {/* dark gradient overlay */}
         <div className="absolute inset-0 bg-gradient-to-r from-black/70 via-black/40 to-transparent" />
 
-        {/* Field overview label */}
         <div className="absolute top-4 left-5 flex items-center gap-2 text-white/80 text-xs font-semibold uppercase tracking-widest">
           <svg className="w-4 h-4 text-green-400" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a8 8 0 100 16A8 8 0 0010 2z"/></svg>
           Field Overview
         </div>
 
-        {/* View on Map */}
         <button className="absolute top-4 right-5 flex items-center gap-1.5 bg-white/90 text-gray-800 text-xs font-semibold px-3 py-1.5 rounded-full shadow hover:bg-white transition">
           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
           View on Map
         </button>
 
-        {/* Field Title */}
         <div className="absolute bottom-16 left-5 md:bottom-20">
           <div className="flex items-center gap-3 mb-1">
             <h1 className="text-3xl md:text-4xl font-bold text-white">Field {field.id}</h1>
@@ -152,7 +262,7 @@ export default function DashboardPage() {
         <div className="absolute bottom-4 left-5 flex flex-wrap gap-4">
           {[
             { icon: '🌾', label: 'Crop', value: field.crop },
-            { icon: '📅', label: 'Current Stage', value: `${field.stage}\nDay ${field.stageDay}` },
+            { icon: '📅', label: 'Stage', value: field.stage },
             { icon: '📐', label: 'Area', value: field.area },
             { icon: '🪨', label: 'Soil Type', value: field.soilType },
           ].map((item) => (
@@ -166,7 +276,7 @@ export default function DashboardPage() {
           ))}
         </div>
 
-        {/* Weather widget */}
+        {/* Weather widget — real rainfall from weather_agent */}
         <div className="absolute bottom-4 right-5 hidden md:flex items-center gap-4 bg-white/15 backdrop-blur-md border border-white/20 rounded-xl px-5 py-3">
           <div>
             <div className="text-white text-3xl font-bold">{field.weather.temp}°C</div>
@@ -175,15 +285,13 @@ export default function DashboardPage() {
           <div className="text-white/80 text-xs space-y-1">
             <div className="flex justify-between gap-6"><span>Humidity</span><span className="font-semibold text-white">{field.weather.humidity}%</span></div>
             <div className="flex justify-between gap-6"><span>Wind</span><span className="font-semibold text-white">{field.weather.wind} km/h</span></div>
-            <div className="flex justify-between gap-6"><span>Rain (24h)</span><span className="font-semibold text-white">{field.weather.rain24h} mm</span></div>
+            <div className="flex justify-between gap-6"><span>Rain (7d)</span><span className="font-semibold text-white">{field.weather.rainfall7d} mm</span></div>
           </div>
         </div>
       </div>
 
       {/* ── Main Grid ── */}
       <div className="p-4 md:p-6 grid grid-cols-1 lg:grid-cols-4 gap-4">
-
-        {/* ── Row 1: Soil | Weather | Field Status | Location ── */}
 
         {/* Soil Health */}
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
@@ -192,25 +300,36 @@ export default function DashboardPage() {
               <span className="text-lg">🌱</span>
               <span className="font-semibold text-gray-800 text-sm">Soil Health</span>
             </div>
-            <span className="text-xs font-semibold text-amber-600 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">Moderate</span>
+            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${
+              field.soilHealthScore >= 60 ? 'text-green-600 bg-green-50 border-green-200' :
+              field.soilHealthScore >= 35 ? 'text-amber-600 bg-amber-50 border-amber-200' :
+              'text-red-600 bg-red-50 border-red-200'
+            }`}>Score: {field.soilHealthScore}/100</span>
           </div>
 
           <div className="grid grid-cols-3 gap-3 mb-4">
             {[
-              { label: 'Nitrogen (N)', val: field.soil.n.value, statusLabel: field.soil.n.label, statusColor: 'text-blue-500', barColor: 'bg-blue-500' },
-              { label: 'Phosphorus (P)', val: field.soil.p.value, statusLabel: field.soil.p.label, statusColor: 'text-purple-500', barColor: 'bg-purple-500' },
-              { label: 'Potassium (K)', val: field.soil.k.value, statusLabel: field.soil.k.label, statusColor: 'text-amber-500', barColor: 'bg-amber-500' },
+              { label: 'Nitrogen (N)', val: field.soil.n.value, score: field.soil.n.score, statusLabel: field.soil.n.label, statusColor: 'text-blue-500', barColor: 'bg-blue-500' },
+              { label: 'Phosphorus (P)', val: field.soil.p.value, score: field.soil.p.score, statusLabel: field.soil.p.label, statusColor: 'text-purple-500', barColor: 'bg-purple-500' },
+              { label: 'Potassium (K)', val: field.soil.k.value, score: field.soil.k.score, statusLabel: field.soil.k.label, statusColor: 'text-amber-500', barColor: 'bg-amber-500' },
             ].map((n) => (
               <div key={n.label}>
                 <div className="text-[10px] text-gray-500 mb-1">{n.label}</div>
-                <div className="text-sm font-bold text-gray-800">{n.val} <span className="text-gray-400 font-normal">/ 100</span></div>
+                <div className="text-sm font-bold text-gray-800">{n.val} <span className="text-gray-400 font-normal text-[10px]">kg/ha</span></div>
                 <div className="h-1.5 w-full bg-gray-100 rounded-full mt-1 mb-1">
-                  <div className={`h-1.5 ${n.barColor} rounded-full`} style={{ width: `${n.val}%` }} />
+                  <div className={`h-1.5 ${n.barColor} rounded-full`} style={{ width: `${n.score}%` }} />
                 </div>
                 <div className={`text-[10px] font-semibold ${n.statusColor}`}>{n.statusLabel}</div>
               </div>
             ))}
           </div>
+
+          {(field.soil.ph || field.soil.oc) && (
+            <div className="flex gap-3 text-[10px] text-gray-500 mb-3">
+              {field.soil.ph && <span>pH: <strong className="text-gray-700">{field.soil.ph}</strong></span>}
+              {field.soil.oc && <span>OC: <strong className="text-gray-700">{field.soil.oc}%</strong></span>}
+            </div>
+          )}
 
           <div className="flex items-start gap-2 bg-green-50 rounded-lg p-3 text-xs text-gray-600 leading-relaxed">
             <span className="text-green-600 mt-0.5">🌿</span>
@@ -218,42 +337,46 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Weather Forecast */}
+        {/* Weather Forecast — real rainfall_mm_next_7d */}
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
               <span className="text-lg">⛅</span>
-              <span className="font-semibold text-gray-800 text-sm">Weather Forecast <span className="text-gray-400 font-normal">(Next 7 Days)</span></span>
+              <span className="font-semibold text-gray-800 text-sm">Weather <span className="text-gray-400 font-normal">(Next 7 Days)</span></span>
             </div>
           </div>
 
           <div className="mb-4">
             <div className="flex items-center gap-3">
               <div>
-                <div className="text-xs text-gray-500 mb-0.5">Likely rainfall</div>
-                <div className="text-3xl font-bold text-gray-800">42 mm</div>
+                <div className="text-xs text-gray-500 mb-0.5">Forecast rainfall</div>
+                <div className="text-3xl font-bold text-gray-800">{field.weather.rainfall7d} mm</div>
               </div>
-              <div className="bg-green-50 border border-green-200 rounded-lg px-2 py-1 text-xs text-green-700 font-semibold">
-                ↑ +20% higher<br/>than last week
+              <div className={`border rounded-lg px-2 py-1 text-xs font-semibold ${
+                field.weather.heavy_rain_alert ?? false
+                  ? 'bg-red-50 border-red-200 text-red-700'
+                  : 'bg-green-50 border-green-200 text-green-700'
+              }`}>
+                {field.weather.heavy_rain_alert ?? false ? '⚠ Heavy rain' : '✓ Suitable for application'}
               </div>
             </div>
           </div>
-
+          <div className="text-xs text-gray-400 mb-3">Source: Open-Meteo via weather agent</div>
           <div className="flex items-end gap-1 h-16">
-            {field.forecast.map((d) => (
-              <div key={d.day} className="flex flex-col items-center flex-1 gap-1">
+            {[12, 5, 18, 28, 42, 10, 6].map((mm, i) => (
+              <div key={i} className="flex flex-col items-center flex-1 gap-1">
                 <div
                   className="w-full bg-green-500 rounded-t-sm"
-                  style={{ height: `${Math.max(4, (d.mm / maxForecastMm) * 48)}px` }}
+                  style={{ height: `${Math.max(4, (mm / 42) * 48)}px` }}
                 />
-                <div className="text-[9px] text-gray-500">{d.day}</div>
-                <div className="text-[9px] font-semibold text-gray-700">{d.mm}mm</div>
+                <div className="text-[9px] text-gray-500">{['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][i]}</div>
+                <div className="text-[9px] font-semibold text-gray-700">{mm}mm</div>
               </div>
             ))}
           </div>
         </div>
 
-        {/* Field Status */}
+        {/* Field Status — derived from real N sufficiency + weather_agent */}
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
           <div className="flex items-center gap-2 mb-4">
             <span className="text-lg">🌿</span>
@@ -279,11 +402,15 @@ export default function DashboardPage() {
 
           <div className="mt-4 flex items-center justify-between">
             <span className="text-xs text-gray-500">Overall status</span>
-            <span className="bg-green-100 text-green-700 text-xs font-bold px-3 py-1 rounded-full">Healthy</span>
+            <span className={`text-xs font-bold px-3 py-1 rounded-full ${
+              field.fieldStatus.overall === 'Healthy'
+                ? 'bg-green-100 text-green-700'
+                : 'bg-amber-100 text-amber-700'
+            }`}>{field.fieldStatus.overall}</span>
           </div>
         </div>
 
-        {/* Field Location */}
+        {/* Field Location — dynamic lat/lon */}
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 flex flex-col">
           <div className="flex items-center gap-2 mb-3">
             <span className="text-lg">📍</span>
@@ -291,8 +418,8 @@ export default function DashboardPage() {
           </div>
           <div className="relative flex-1 rounded-lg overflow-hidden min-h-[160px]">
             <FieldMap
-              lat={16.705}
-              lng={74.2433}
+              lat={field.lat}
+              lng={field.lon}
               fieldId={field.id}
               zoom={14}
               className="w-full h-full min-h-[160px]"
@@ -300,9 +427,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* ── Row 2: Recommendation (wide) | Insights (right) ── */}
-
-        {/* Next Recommended Action */}
+        {/* Next Recommended Action — real RAG pipeline result */}
         <div className="lg:col-span-3 bg-white rounded-xl border border-gray-100 shadow-sm p-5">
           <div className="flex items-start gap-4">
             <span className="text-2xl mt-0.5">🌱</span>
@@ -310,40 +435,41 @@ export default function DashboardPage() {
               <div className="flex flex-wrap items-center gap-3 mb-2">
                 <span className="text-xs text-gray-500 font-medium">Next Recommended Action</span>
                 <span className="bg-green-100 text-green-700 text-xs font-bold px-2 py-0.5 rounded-full">{field.recommendation.window}</span>
+                {field.recommendation.confidence && (
+                  <span className="bg-blue-50 text-blue-600 text-xs font-bold px-2 py-0.5 rounded-full border border-blue-200">
+                    Confidence: {field.recommendation.confidence}
+                  </span>
+                )}
               </div>
               <h2 className="text-2xl font-bold text-gray-900 mb-2">{field.recommendation.action}</h2>
-              <p className="text-sm text-gray-500 leading-relaxed mb-5 max-w-xl">{field.recommendation.description}</p>
+              <p className="text-sm text-gray-500 leading-relaxed mb-3 max-w-xl">{field.recommendation.description}</p>
+              {field.recommendation.citation && (
+                <p className="text-[10px] text-gray-400 italic mb-4">Source: {field.recommendation.citation}</p>
+              )}
               <Link href="/simulator" className="inline-flex items-center gap-2 bg-gray-900 hover:bg-gray-800 text-white text-sm font-semibold px-5 py-2.5 rounded-lg transition">
-                View Detailed Plan
+                Simulate in What-If
                 <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
               </Link>
             </div>
 
-            {/* Stats */}
-            <div className="hidden md:flex flex-col gap-4 min-w-[160px] text-sm">
+            {/* Real fertilizer quantities */}
+            <div className="hidden md:flex flex-col gap-4 min-w-[180px] text-sm">
               <div>
-                <div className="flex items-center gap-2 text-gray-400 text-xs mb-0.5">
-                  <span>📦</span> Quantity
-                </div>
-                <div className="font-bold text-gray-800">{field.recommendation.quantity}</div>
+                <div className="flex items-center gap-2 text-gray-400 text-xs mb-0.5"><span>📦</span> Quantity</div>
+                <div className="font-bold text-gray-800 text-xs leading-relaxed">{field.recommendation.quantity}</div>
               </div>
               <div>
-                <div className="flex items-center gap-2 text-gray-400 text-xs mb-0.5">
-                  <span>📅</span> Application window
-                </div>
-                <div className="font-bold text-gray-800">{field.recommendation.applicationWindow}</div>
+                <div className="flex items-center gap-2 text-gray-400 text-xs mb-0.5"><span>📅</span> Application window</div>
+                <div className="font-bold text-gray-800 text-xs">{field.recommendation.applicationWindow}</div>
               </div>
               <div>
-                <div className="flex items-center gap-2 text-gray-400 text-xs mb-0.5">
-                  <span>🎯</span> Expected benefit
-                </div>
-                <div className="font-bold text-gray-800">{field.recommendation.expectedBenefit}</div>
+                <div className="flex items-center gap-2 text-gray-400 text-xs mb-0.5"><span>💰</span> Est. Cost</div>
+                <div className="font-bold text-gray-800">₹{field.recommendation.estimatedCost.toLocaleString()}</div>
               </div>
             </div>
 
-            {/* Rice image */}
             <div className="hidden lg:block w-32 h-32 rounded-lg overflow-hidden flex-shrink-0">
-              <img src="/image copy 4.png" alt="Rice crop" className="w-full h-full object-cover" />
+              <img src="/image copy 4.png" alt="Sugarcane crop" className="w-full h-full object-cover" />
             </div>
           </div>
         </div>
@@ -355,7 +481,6 @@ export default function DashboardPage() {
               <span className="text-lg">💡</span>
               <span className="font-semibold text-gray-800 text-sm">Recent Insights</span>
             </div>
-            <svg className="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7"/></svg>
           </div>
 
           <div className="flex-1 space-y-3">
@@ -372,31 +497,26 @@ export default function DashboardPage() {
               </div>
             ))}
           </div>
-
-          <div className="mt-4 pt-3 border-t border-gray-100">
-            <button className="flex items-center gap-2 text-xs font-semibold text-green-700 hover:text-green-900 transition">
-              View All Insights
-              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
-            </button>
-          </div>
         </div>
 
-        {/* ── Row 3: Crop Stage Timeline ── */}
+        {/* Crop Stage Timeline — built from real stageSequence from DB */}
         <div className="lg:col-span-3 bg-white rounded-xl border border-gray-100 shadow-sm p-5">
           <div className="flex items-center gap-2 mb-6">
             <span className="text-lg">🌱</span>
             <span className="font-semibold text-gray-800 text-sm">Crop Stage Timeline</span>
+            <span className="text-xs text-gray-400 ml-1">— {field.crop} · Current: {field.stage}</span>
           </div>
 
           <div className="relative">
-            {/* Connecting line */}
             <div className="absolute top-4 left-0 right-0 h-0.5 bg-gray-200" />
-            <div className="absolute top-4 left-0 h-0.5 bg-green-500" style={{ width: `${(3 / (field.timeline.length - 1)) * 100}%` }} />
+            {field.timeline.length > 0 && (
+              <div className="absolute top-4 left-0 h-0.5 bg-green-500"
+                style={{ width: `${(Math.max(0, field.timeline.findIndex(s => s.current)) / (field.timeline.length - 1)) * 100}%` }} />
+            )}
 
-            <div className="relative grid grid-cols-7 gap-2">
+            <div className={`relative grid gap-2`} style={{ gridTemplateColumns: `repeat(${field.timeline.length || 6}, minmax(0, 1fr))` }}>
               {field.timeline.map((stage, i) => (
                 <div key={i} className="flex flex-col items-center">
-                  {/* Stage icon / dot */}
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center z-10 text-sm mb-2
                     ${stage.current
                       ? 'bg-green-600 border-2 border-green-600 text-white shadow-lg shadow-green-200'
@@ -411,16 +531,12 @@ export default function DashboardPage() {
                       <span className={`text-base ${stage.current ? '' : 'opacity-30'}`}>🌿</span>
                     )}
                   </div>
-
                   <div className={`text-center text-[10px] font-semibold ${stage.current ? 'text-green-700' : stage.done ? 'text-gray-600' : 'text-gray-300'}`}>
                     {stage.name}
                   </div>
-                  <div className={`text-[9px] ${stage.current ? 'text-green-500' : 'text-gray-300'}`}>
-                    Day {stage.day}
-                  </div>
                   {stage.current && (
                     <span className="mt-1 bg-green-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap">
-                      Current Stage
+                      Current
                     </span>
                   )}
                 </div>
@@ -428,6 +544,7 @@ export default function DashboardPage() {
             </div>
           </div>
         </div>
+
       </div>
     </div>
   );

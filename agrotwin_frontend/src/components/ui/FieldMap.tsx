@@ -22,6 +22,9 @@ export default function FieldMap({
   const mapRef = useRef<any>(null);
 
   useEffect(() => {
+    // Guard: don't attempt to render the map if lat/lng aren't valid numbers yet
+    if (!lat || !lng || isNaN(lat) || isNaN(lng)) return;
+
     let isMounted = true;
 
     import("leaflet").then((L) => {

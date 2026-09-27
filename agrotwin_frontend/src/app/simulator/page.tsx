@@ -162,17 +162,48 @@ function GrowthStageTimeline({
 
 // ─── Main Page ─────────────────────────────────────────────────────────────────
 export default function SimulatorPage() {
-  const [activeCropId, setActiveCropId] = useState<string>("rice");
+  const [activeCropId, setActiveCropId] = useState<string>("sugarcane");
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [iframeKey, setIframeKey] = useState(0);
+  const [realBaseline, setRealBaseline] = useState<number | null>(null);
+  const [realCitation, setRealCitation] = useState<string>('');
+  const [realFieldInfo, setRealFieldInfo] = useState<{ crop: string; stage: string; } | null>(null);
+
+  // Fetch the real baseline from backend twin API on mount
+  useEffect(() => {
+    fetch('http://localhost:8000/fields/REAL-001/twin')
+      .then(r => r.json())
+      .then(data => {
+        // Use the gap N as the required target to apply
+        const gap = data.currentPlan?.soilGap;
+        if (gap?.N) {
+          // Real recommended N gap to fill — this is the meaningful "baseline" for this field
+          setRealBaseline(Math.round(gap.N));
+        }
+        setRealCitation(data.currentPlan?.citation || '');
+        setRealFieldInfo({ crop: data.crop, stage: data.growthStage });
+        // Auto-switch crop selector to the real crop
+        const cropLower = (data.crop || '').toLowerCase();
+        if (cropLower.includes('sugarcane')) setActiveCropId('sugarcane');
+        else if (cropLower.includes('rice')) setActiveCropId('rice');
+        else if (cropLower.includes('soybean')) setActiveCropId('soybean');
+      })
+      .catch(() => null);
+  }, []);
 
   // Inputs
   const crop = CROPS[activeCropId];
+  const effectiveBaseline = realBaseline ?? crop.baselineFertilizer;
   const [nKgHa, setNKgHa] = useState(crop.baselineFertilizer);
   const [rainfallPct, setRainfallPct] = useState(0);
   const [applicationTiming, setApplicationTiming] = useState<"Early" | "On time" | "Delayed">("On time");
   const [irrigation, setIrrigation] = useState<"Low" | "Normal" | "High">("Normal");
   const [plantingShift, setPlantingShift] = useState(0);
+
+  // Sync slider to real baseline when it loads
+  useEffect(() => {
+    if (realBaseline !== null) setNKgHa(realBaseline);
+  }, [realBaseline]);
 
   // Derived state: now fetched from backend with local fallback
   const [result, setResult] = useState<CropVisualState>(() => simulateCrop({
@@ -188,10 +219,10 @@ export default function SimulatorPage() {
   useEffect(() => {
     const handler = setTimeout(() => {
       setIsSimulating(true);
-      const baseline = CROPS[activeCropId].baselineFertilizer;
+      const baseline = effectiveBaseline;
       const deltaPct = ((nKgHa - baseline) / baseline) * 100;
       
-      fetch('http://localhost:8000/fields/SYN-001/what-if', {
+      fetch('http://localhost:8000/fields/REAL-001/what-if', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -245,7 +276,7 @@ export default function SimulatorPage() {
   }, [activeCropId]);
 
   function handleReset() {
-    setNKgHa(crop.baselineFertilizer);
+    setNKgHa(effectiveBaseline);
     setRainfallPct(0);
     setApplicationTiming("On time");
     setIrrigation("Normal");
@@ -278,12 +309,18 @@ export default function SimulatorPage() {
               <span className="px-2 py-0.5 bg-gray-100 text-gray-500 text-[9px] rounded font-medium border border-gray-200">
                 Interactive visual simulation
               </span>
+              {realFieldInfo && (
+                <span className="px-2 py-0.5 bg-green-50 text-green-700 text-[9px] rounded font-medium border border-green-200">
+                  Live · {realFieldInfo.crop} · {realFieldInfo.stage}
+                </span>
+              )}
             </div>
             <h1 className="text-2xl md:text-3xl font-bold text-gray-900 leading-tight font-serif">
               See how a change can affect your crop.
             </h1>
             <p className="text-sm text-gray-500 mt-1 max-w-2xl">
               Adjust field conditions and observe the simulated crop response before making a decision.
+              {realCitation && <span className="block text-[10px] text-gray-400 italic mt-1">Baseline from: {realCitation}</span>}
             </p>
           </div>
         </div>

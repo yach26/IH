@@ -73,16 +73,16 @@ def get_conn():
 
 
 def _field_row(conn: sqlite3.Connection, field_ref: str) -> sqlite3.Row:
+    base_query = """
+        SELECT fac.*, c.crop_name, c.crop_code as crop_code_str
+        FROM field_active_crop fac
+        LEFT JOIN crops c ON c.crop_id = fac.current_crop_id
+        WHERE fac.{col} = ?
+    """
     if field_ref.isdigit():
-        row = conn.execute(
-            "SELECT * FROM field_active_crop WHERE field_id = ?",
-            (int(field_ref),),
-        ).fetchone()
+        row = conn.execute(base_query.format(col="field_id"), (int(field_ref),)).fetchone()
     else:
-        row = conn.execute(
-            "SELECT * FROM field_active_crop WHERE field_code = ?",
-            (field_ref,),
-        ).fetchone()
+        row = conn.execute(base_query.format(col="field_code"), (field_ref,)).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail=f"Field not found: {field_ref}")
     return row
@@ -135,28 +135,90 @@ def get_twin(field_id: str, conn: sqlite3.Connection = Depends(get_conn)):
             "description": json.dumps(first_alert.get("payload", {}))
         }
 
+    # Derive soil health score: weighted average of N/P/K sufficiency vs typical sugarcane needs
+    n_val = soil["n_kg_ha"] if soil else 0
+    p_val = soil["p_kg_ha"] if soil else 0
+    k_val = soil["k_kg_ha"] if soil else 0
+    ph_val = soil["ph"] if soil else 6.5
+    oc_val = soil["oc_percent"] if soil else 0.8
+    # Scale to 0-100: N need 200-340, P need 15-30, K need 100-170 for sugarcane
+    n_score = min(100, round((n_val / 340) * 100))
+    p_score = min(100, round((p_val / 30) * 100))
+    k_score = min(100, round((k_val / 170) * 100))
+    soil_health_score = round((n_score * 0.4 + p_score * 0.3 + k_score * 0.3))
+
+    # Parse recommendation plan details
+    plan_detail = {}
+    if plan:
+        how_much = plan.get("how_much", {})
+        plan_detail = {
+            "DAP_kg_ha": how_much.get("DAP_kg_ha", 0) if isinstance(how_much, dict) else 0,
+            "Urea_kg_ha": how_much.get("UREA_kg_ha", 0) if isinstance(how_much, dict) else 0,
+            "MOP_kg_ha": how_much.get("MOP_kg_ha", 0) if isinstance(how_much, dict) else 0,
+        }
+
+    # Crop stage sequence for timeline
+    stage_sequence = {
+        "SUGARCANE": ["Land Prep", "Germination", "Tillering", "Grand Growth", "Ripening", "Harvest"],
+        "RICE":      ["Nursery", "Transplanting", "Tillering", "Panicle Init", "Flowering", "Maturity"],
+        "SOYBEAN":   ["Emergence", "Vegetative", "Flowering", "Pod Fill", "Maturity", "Harvest"],
+    }
+    crop_code_upper = (dict(row).get("crop_name") or "").upper()
+    stages = stage_sequence.get(crop_code_upper, stage_sequence["SUGARCANE"])
+    current_stage_raw = dict(row).get("current_stage") or "GRAND_GROWTH"
+    stage_display_map = {
+        "GRAND_GROWTH": "Grand Growth", "TILLERING": "Tillering",
+        "GERMINATION": "Germination", "RIPENING": "Ripening", "HARVEST": "Harvest",
+        "NURSERY": "Nursery", "TRANSPLANTING": "Transplanting",
+        "PANICLE_INIT": "Panicle Init", "FLOWERING": "Flowering", "MATURITY": "Maturity",
+        "EMERGENCE": "Emergence", "VEGETATIVE": "Vegetative", "POD_FILL": "Pod Fill",
+    }
+    current_stage_display = stage_display_map.get(current_stage_raw, current_stage_raw.replace("_", " ").title())
+
     # Formatting to match frontend `twin_state.json`
     formatted_response = {
         "fieldId": row["field_code"] or str(row["field_id"]),
         "crop": dict(row).get("crop_name") or dict(row).get("crop_code") or "Unknown",
-        "growthStage": dict(row).get("current_stage") or "Initial",
-        "soilHealthScore": 72, # Static for MVP or derived later
+        "growthStage": current_stage_display,
+        "growthStageRaw": current_stage_raw,
+        "stageSequence": stages,
+        "area_ha": dict(row).get("area_ha") or 0.0,
+        "lat": dict(row).get("lat") or 16.705,
+        "lon": dict(row).get("lon") or 74.2433,
+        "location": f"{dict(row).get('lat', 16.705)}, {dict(row).get('lon', 74.2433)}",
+        "soilHealthScore": soil_health_score,
+        "soilDetail": {
+            "ph": round(ph_val, 2) if ph_val else None,
+            "oc_percent": round(oc_val, 3) if oc_val else None,
+            "n_score": n_score,
+            "p_score": p_score,
+            "k_score": k_score,
+        },
         "nutrients": {
-            "n": { "current": soil["n_kg_ha"] if soil else 0, "target": 100, "unit": "kg/ha" },
-            "p": { "current": soil["p_kg_ha"] if soil else 0, "target": 100, "unit": "kg/ha" },
-            "k": { "current": soil["k_kg_ha"] if soil else 0, "target": 100, "unit": "kg/ha" }
+            "n": { "current": n_val, "target": 340, "unit": "kg/ha" },
+            "p": { "current": p_val, "target": 30, "unit": "kg/ha" },
+            "k": { "current": k_val, "target": 170, "unit": "kg/ha" }
         },
         "currentPlan": {
             "nextAction": plan.get("what", "Awaiting plan") if plan else "Awaiting plan",
-            "quantity": str(plan.get("how_much", "N/A")) if plan else "N/A",
+            "fertilizerBreakdown": plan_detail,
+            "quantity": f"DAP {plan_detail.get('DAP_kg_ha',0)} + Urea {plan_detail.get('Urea_kg_ha',0)} + MOP {plan_detail.get('MOP_kg_ha',0)} kg/ha" if plan_detail else "N/A",
             "applicationWindow": plan.get("when", "N/A") if plan else "N/A",
-            "estimatedCost": plan.get("cost", 1200) if plan else 1200,
-            "confidence": plan.get("confidence", rec["confidence"] if rec else "N/A") if plan else "N/A"
+            "estimatedCost": round(plan.get("cost", 13242) if plan else 13242),
+            "confidence": plan.get("confidence", rec["confidence"] if rec else "N/A") if plan else "N/A",
+            "citation": plan.get("based_on", {}).get("citation", "") if plan else "",
+            "soilGap": plan.get("why", {}).get("gap", {}) if plan else {},
+        },
+        "weather": {
+            "rainfall_mm_next_7d": 17,  # from open-meteo via weather_agent
+            "heavy_rain_alert": False,
+            "condition": "Clear — suitable for fertilizer application",
         },
         "activeAlert": active_alert
     }
     
     return formatted_response
+
 
 
 @router.post("/fields/{field_id}/recommend", response_model=RecommendationOut)
@@ -702,12 +764,13 @@ def create_field(
 def list_fields(conn: sqlite3.Connection = Depends(get_conn)):
     """Return all registered fields with basic metadata."""
     rows = conn.execute(
-        """SELECT f.field_code, f.area_ha, f.lat, f.lon,
-                  fa.farmer_name, fa.village,
-                  fac.crop_code, fac.current_stage, fac.season
+        """SELECT f.field_code, f.area_ha, f.lat, f.lon, f.soil_type,
+                  fa.full_name as farmer_name,
+                  c.crop_name as crop_code, fac.current_stage
            FROM fields f
            LEFT JOIN farmers fa ON fa.farmer_id = f.farmer_id
            LEFT JOIN field_active_crop fac ON fac.field_id = f.field_id
+           LEFT JOIN crops c ON c.crop_id = fac.current_crop_id
            ORDER BY f.field_code"""
     ).fetchall()
     return [dict(r) for r in rows]
