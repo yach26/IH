@@ -129,7 +129,7 @@ def _fetch_and_store_snapshot(
            (field_id, fetched_at, forecast_json, rainfall_probability,
             rainfall_mm_next_7d, heavy_rain_alert, source)
            VALUES (?,?,?,?,?,?,?)""",
-        (field_id, now_iso, json.dumps(data), max_prob, mm_7d, int(alert), 'open-meteo'),
+        (field_id, now_iso, json.dumps(data), max_prob, mm_7d, bool(alert), 'open-meteo'),
     )
     conn.commit()
     new_id = cur.lastrowid
@@ -148,7 +148,7 @@ def _insert_snapshot_from_mock(conn: sqlite3.Connection, field_id: int, mock: di
            VALUES (?,?,?,?,?,?,?)""",
         (field_id, now_iso, json.dumps(mock.get("raw_json", {})),
          mock.get("rainfall_probability", 0), mock.get("rainfall_mm_next_7d", 0),
-         int(mock.get("heavy_rain_alert", False)), mock.get("source", "mock")),
+         bool(mock.get("heavy_rain_alert", False)), mock.get("source", "mock")),
     )
     conn.commit()
     return _get_snapshot_by_id(conn, cur.lastrowid)
