@@ -1,0 +1,28 @@
+शेतकरी आरोग्य पत्रक / SOIL HEALTH CARD
+महाराष्ट्र शासन / Government of Maharashtra
+
+शेतकरी नाव: सुनील देशमुख / Farmer Name: Sunil Deshmukh
+गाव: कोळ्हापूर / Village: Kolhapur
+तालुका: करवीर / Taluka: Karvir
+जिल्हा: कोळ्हापूर / District: Kolhapur
+नमुना क्रमांक / Sample No: MH-2024-KOL-001234
+तपासणी दिनांक / Date of Test: 22/03/2024
+
+मृदा परीक्षण निकाल / Soil Test Results:
+नायट्रोजन (N): 180 kg/ha
+फॉस्फरस (P2O5): 28 kg/ha
+पोटॅश (K2O): 250 kg/ha
+पीएच: 6.8
+सेंद्रिय कर्बन: 0.45%
+विद्युत चालकता: 0.28 dS/m
+
+सूक्ष्म द्रव्ये / Micronutrients:
+गंधक (S): 10 ppm
+जस्त (Zn): 0.6 ppm
+लोह (Fe): 3.8 ppm
+तांबे (Cu): 0.2 ppm
+मग्नेशियम (Mn): 10 ppm
+बोरॉन (B): 0.4 ppm
+
+प्रयोगशाळा: मृदा तपासणी प्रयोगशाळा, कोळ्हापूर
+Lab: Soil Testing Laboratory, Kolhapur

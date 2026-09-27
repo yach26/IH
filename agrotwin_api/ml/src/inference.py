@@ -202,6 +202,7 @@ def predict_yield(
         "status": "OK",
         "reason": None,
         "caveats": caveats,
+        "extrapolation": False,
     }
 
 

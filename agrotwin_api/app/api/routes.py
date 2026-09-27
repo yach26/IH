@@ -506,12 +506,18 @@ def agronomist_override(
     new_rec_id = cur.lastrowid
     
     # Audit trail
+    import logging
+    LOG = logging.getLogger(__name__)
+    LOG.info(
+        "Agronomist override: recommendation_id=%d agronomist=%s reason=%s new_rec_id=%d",
+        body.recommendation_id, body.agronomist_id, body.reason, new_rec_id,
+    )
     cur.execute(
         """INSERT INTO audit_log (entity_type, entity_id, action, actor, old_value, new_value)
            VALUES ('recommendation', ?, 'OVERRIDE', ?, ?, ?)""",
         (
-            body.recommendation_id, 
-            body.agronomist_id, 
+            body.recommendation_id,
+            body.agronomist_id,
             json.dumps({"recommendation_id": body.recommendation_id}),
             json.dumps({"new_recommendation_id": new_rec_id, "reason": body.reason})
         )

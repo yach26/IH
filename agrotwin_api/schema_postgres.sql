@@ -69,6 +69,7 @@ CREATE TABLE IF NOT EXISTS fields (
     irrigation_type TEXT,
     lat             NUMERIC(10,6),
     lon             NUMERIC(10,6),
+    geometry        TEXT,
     is_synthetic    BOOLEAN DEFAULT FALSE,
     label_note      TEXT,
     created_at      TIMESTAMPTZ DEFAULT now(),

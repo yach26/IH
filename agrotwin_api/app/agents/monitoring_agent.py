@@ -14,6 +14,7 @@ Listens on the in-process EventBus. The demo wow path is:
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from datetime import datetime, timezone
 from typing import Any, Callable
@@ -21,6 +22,8 @@ from typing import Any, Callable
 from ..core.event_bus import get_bus
 from ..core.events import Event, EventType
 from ..db import _json_load
+
+LOG = logging.getLogger(__name__)
 
 # Legacy in-process registry (kept for existing unit tests)
 _handlers: list[tuple[str, Callable]] = []
@@ -220,6 +223,10 @@ class MonitoringAgent:
                 "HEAVY_RAIN_ALERT conflicts with the current application window "
                 f"({plan.get('when')})."
             )
+            LOG.warning(
+                "PLAN_INVALIDATED: field=%s reason=%s recommendation_id=%s",
+                event.field_code, reason, plan.get("recommendation_id"),
+            )
             self.bus.publish(
                 Event.create(
                     EventType.PLAN_INVALIDATED,
@@ -274,6 +281,10 @@ class MonitoringAgent:
                     previous_plan=plan,
                 )
         else:
+            LOG.info(
+                "HEAVY_RAIN_ALERT: no conflict for field=%s (no active plan or no weather conflict)",
+                event.field_code,
+            )
             self._audit(conn, event, "NO_CONFLICT")
 
     def _audit(self, conn: sqlite3.Connection, event: Event, action: str) -> None:

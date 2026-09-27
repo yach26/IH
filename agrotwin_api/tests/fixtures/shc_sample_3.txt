@@ -1,0 +1,27 @@
+GOVERNMENT OF MAHARASHTRA
+SOIL HEALTH CARD
+
+SHC No: MH-JAL-2023-005678
+Farmer: Priya Shinde
+Village: Jalgaon
+District: Jalgaon
+Sample Date: 10/11/2023
+
+SOIL ANALYSIS REPORT
+------------------
+Nitrogen (N): 95.5 kg/ha
+Phosphorus (P): 22.0 kg/ha
+Potassium (K): 180.0 kg/ha
+pH: 7.5
+Organic Carbon: 0.38%
+EC: 0.45 dS/m
+
+Micronutrient Status:
+S: 8.5 ppm
+Zn: 0.5 ppm
+Fe: 2.9 ppm
+Cu: 0.15 ppm
+Mn: 8.0 ppm
+B: 0.35 ppm
+
+Tested at: District Soil Testing Lab, Jalgaon

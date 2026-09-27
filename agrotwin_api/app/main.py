@@ -6,10 +6,13 @@ Run from agrotwin_api/:
 
 Env:
     AGROTWIN_DB  path to SQLite twin (default ./agrotwin.db)
+    DATABASE_URL  Postgres connection string (overrides SQLite)
 """
 
 from __future__ import annotations
 
+import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -19,13 +22,23 @@ from .agents.monitoring_agent import get_monitoring_agent, register_all_handlers
 from .api.routes import router
 from .core.event_bus import get_bus
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+LOG = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    LOG.info("AgroTwin API starting up...")
+    LOG.info("Database: %s", os.environ.get("DATABASE_URL", "SQLite"))
     register_all_handlers()
     get_monitoring_agent()
     get_bus()
+    LOG.info("AgroTwin API ready")
     yield
+    LOG.info("AgroTwin API shutting down")
 
 
 app = FastAPI(

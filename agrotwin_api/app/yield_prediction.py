@@ -19,7 +19,8 @@ LIMITATION = "Yield model trained on synthetic data; directional estimate, not v
 
 def abstain(reason, status="ABSTAIN"):
     return dict(status=status, predicted_yield_kg_ha=None, yield_band=None,
-                confidence=0.0, model_version=None, reason=reason, caveats=[LIMITATION])
+                confidence=0.0, model_version=None, reason=reason, caveats=[LIMITATION],
+                extrapolation=False)
 
 
 def _predict(payload):
@@ -113,9 +114,17 @@ def _estimate(conn, field_row, result, rainfall):
                             "fertilizer_plan": plan}
     prediction["caveats"].extend(result.get("flags", []))
     rain_bounds = (900, 1300) if soil["district"] == "Kolhapur" else (550, 850)
-    if not rain_bounds[0] <= rainfall <= rain_bounds[1]:
+    rain_extrapolation = not rain_bounds[0] <= rainfall <= rain_bounds[1]
+    if rain_extrapolation:
         prediction["caveats"].append(f"Seasonal rainfall is outside the synthetic training range for {soil['district']} ({rain_bounds[0]}–{rain_bounds[1]} mm).")
     prediction["caveats"].append("The supplied yield model uses the original soil-P proxy features; the current fertilizer ledger converts elemental P to P2O5. Model features are preserved to match training.")
-    if any(not 0.4 <= applied[n] / result["required"][n] <= 1.3 for n in applied):
+    nutrient_extrapolation = any(not 0.4 <= applied[n] / result["required"][n] <= 1.3 for n in applied)
+    if nutrient_extrapolation:
         prediction["caveats"].append("This plan includes nutrient rates outside the synthetic training range (40–130% of RDF); yield is an extrapolation.")
+    prediction["extrapolation"] = rain_extrapolation or nutrient_extrapolation
+    if prediction["extrapolation"]:
+        LOG.warning(
+            "Yield model extrapolation: field=%s rain_extrapolation=%s nutrient_extrapolation=%s",
+            field_row["field_code"], rain_extrapolation, nutrient_extrapolation,
+        )
     return prediction

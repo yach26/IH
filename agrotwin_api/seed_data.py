@@ -312,7 +312,46 @@ def seed_all():
     }
 
 
-if __name__ == "__main__":
+def main():
+    """CLI entry point with safety guards."""
+    import argparse
+    import sys
+
+    parser = argparse.ArgumentParser(description="Seed AgroTwin database with demo data")
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Force reseed even if data exists (required for Postgres)",
+    )
+    parser.add_argument(
+        "--demo-only",
+        action="store_true",
+        help="Only seed if database is empty or missing (safe default)",
+    )
+    args = parser.parse_args()
+
+    if is_postgres() and not args.force:
+        print("ERROR: Refusing to seed Postgres without --force flag.", file=sys.stderr)
+        print("This would TRUNCATE all production tables.", file=sys.stderr)
+        print("If you really want to reseed, run: python seed_data.py --force", file=sys.stderr)
+        sys.exit(1)
+
+    if not is_postgres() and not args.force:
+        if os.path.exists(DB_PATH):
+            # Check if already has data
+            conn = sqlite3.connect(DB_PATH)
+            try:
+                count = conn.execute("SELECT COUNT(*) FROM fields").fetchone()[0]
+                if count > 0:
+                    print(f"Database already has {count} fields. Use --force to reseed.", file=sys.stderr)
+                    sys.exit(1)
+            finally:
+                conn.close()
+
     ctx = seed_all()
     print(f"Seeded database at {ctx['db_path']}")
     print(f"Fields loaded: {list(ctx['field_ids'].keys())}")
+
+
+if __name__ == "__main__":
+    main()

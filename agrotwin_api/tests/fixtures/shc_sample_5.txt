@@ -1,0 +1,32 @@
+MAHARASHTRA STATE SOIL HEALTH CARD
+=====================================
+
+Card Reference: MH/2024-25/SHC/0098765
+Farmer Name: Vikram Rathod
+Survey No: 45/2
+Village: Erandol
+Taluka: Erandol
+District: Jalgaon
+Sampling Date: 18/09/2024
+
+LABORATORY RESULTS
+------------------
+Parameter              | Value  | Unit
+-----------------------|--------|------
+Available Nitrogen     | 130.0  | kg/ha
+Available Phosphorus   | 30.5   | kg/ha
+Available Potassium    | 220.0  | kg/ha
+Soil Reaction (pH)     | 7.2    | -
+Organic Carbon         | 0.52   | %
+Electrical Conductivity| 0.41   | dS/m
+
+MICRONUTRIENTS
+--------------
+Sulphur (S)            | 11.0   | ppm
+Zinc (Zn)              | 0.7    | ppm
+Iron (Fe)              | 4.1    | ppm
+Copper (Cu)            | 0.25   | ppm
+Manganese (Mn)         | 11.0   | ppm
+Boron (B)              | 0.45   | ppm
+
+Laboratory: Marathwada Soil Testing Laboratory, Jalgaon

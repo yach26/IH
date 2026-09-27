@@ -279,11 +279,11 @@ CREATE TABLE recommendations (
     evidence_citations TEXT,                -- JSON array of citation strings
     flags           TEXT,                   -- JSON array
     is_synthetic    BOOLEAN DEFAULT 0,
-    status          TEXT DEFAULT 'PROPOSED', -- PROPOSED|ABSTAINED|NO_FERTILIZER_NEEDED|SUPERSEDED
+    status          TEXT DEFAULT 'PROPOSED', -- PROPOSED|ABSTAINED|NO_FERTILIZER_NEEDED|SUPERSEDED|PLAN_GENERATED|PLAN_REVISED
     -- Phase-2: lifecycle tracking for Monitoring Agent
     invalidated_at  TEXT,                   -- ISO timestamp when Monitoring Agent superseded this
     superseded_by   INTEGER REFERENCES recommendations(recommendation_id),
-    CHECK (status IN ('PROPOSED','ABSTAINED','NO_FERTILIZER_NEEDED','SUPERSEDED'))
+    CHECK (status IN ('PROPOSED','ABSTAINED','NO_FERTILIZER_NEEDED','SUPERSEDED','PLAN_GENERATED','PLAN_REVISED'))
 );
 
 CREATE INDEX idx_recs_field_latest ON recommendations(field_id, generated_at DESC);

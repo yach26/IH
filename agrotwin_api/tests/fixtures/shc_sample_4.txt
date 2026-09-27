@@ -1,0 +1,26 @@
+कृषी विभाग / Department of Agriculture
+मृदा आरोग्य पत्रक / Soil Health Card
+
+तारीख / Date: 05-02-2024
+शेतकरी / Farmer: Anil Kale
+जिल्हा / District: Kolhapur
+तालुका / Taluka: Bhudargarg
+गाव / Village: Gargoti
+
+नमुना ओळख / Sample ID: KOL-BHD-2024-007
+
+निकाल / Results:
+उपलब्ध नायट्रोजन / Available N: 245 kg/ha
+उपलब्ध फॉस्फरस / Available P: 42 kg/ha
+उपलब्ध पोटॅश / Available K: 350 kg/ha
+पीएच / pH: 8.1
+सेंद्रिय कर्बन / OC: 0.72%
+विद्युत चालकता / EC: 0.38 dS/m
+
+सूक्ष्म द्रव्ये / Micronutrients:
+Sulphur: 14 ppm
+Zinc: 0.9 ppm
+Iron: 5.2 ppm
+Copper: 0.4 ppm
+Manganese: 15 ppm
+Boron: 0.6 ppm

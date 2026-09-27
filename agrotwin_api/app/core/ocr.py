@@ -79,28 +79,34 @@ _FIELD_PATTERNS: dict[str, list[re.Pattern]] = {
         re.compile(r"(?:available|total)?\s*nitrogen[^\d:]*[:=\-\s]\s*([0-9]+(?:\.[0-9]+)?)", re.I),
         re.compile(r"\bN\b[^\d:]*[:=\-]\s*([0-9]+(?:\.[0-9]+)?)", re.I),
         re.compile(r"\bavailable\s+n\b[^\d:]*[:=\-\s]?\s*([0-9]+(?:\.[0-9]+)?)", re.I),
+        re.compile(r"नायट्रोजन[^\d:]*[:=\-\s]\s*([0-9]+(?:\.[0-9]+)?)", re.I),
     ],
     "p_kg_ha": [
         re.compile(r"(?:available)?\s*(?:phosphorus|phcsphorus|phos|p2o5)[^\d:]*[:=\-\s]\s*([0-9]+(?:\.[0-9]+)?)", re.I),
         re.compile(r"\bP(?:2O5)?\b[^\d:]*[:=\-]\s*([0-9]+(?:\.[0-9]+)?)", re.I),
         re.compile(r"\bavailable\s+p\b[^\d:]*[:=\-\s]?\s*([0-9]+(?:\.[0-9]+)?)", re.I),
+        re.compile(r"फॉस्फरस[^\d:]*[:=\-\s]\s*([0-9]+(?:\.[0-9]+)?)", re.I),
     ],
     "k_kg_ha": [
         re.compile(r"(?:available)?\s*(?:potassium|fotassium|potash|k2o)[^\d:]*[:=\-\s]\s*([0-9]+(?:\.[0-9]+)?)", re.I),
         re.compile(r"\bK(?:2O)?\b[^\d:]*[:=\-]\s*([0-9]+(?:\.[0-9]+)?)", re.I),
         re.compile(r"\bavailable\s+k\b[^\d:]*[:=\-\s]?\s*([0-9]+(?:\.[0-9]+)?)", re.I),
+        re.compile(r"पोटॅश[^\d:]*[:=\-\s]\s*([0-9]+(?:\.[0-9]+)?)", re.I),
     ],
     "ph": [
         re.compile(r"(?:soil\s*)?pH[^\d:]*[:=\-\s]\s*([0-9]+(?:\.[0-9]+)?)", re.I),
         re.compile(r"\breaction\s*\(?ph\)?\s*[:=\-]?\s*([0-9]+(?:\.[0-9]+)?)", re.I),
+        re.compile(r"पीएच[^\d:]*[:=\-\s]\s*([0-9]+(?:\.[0-9]+)?)", re.I),
     ],
     "oc_percent": [
         re.compile(r"(?:organic\s*carbon|org\.?\s*carbon|o\.?c\.?)[^\d:]*[:=\-\s]\s*([0-9]+(?:\.[0-9]+)?)", re.I),
         re.compile(r"\bOC\b[^\d:]*[:=\-]\s*([0-9]+(?:\.[0-9]+)?)", re.I),
+        re.compile(r"सेंद्रिय\s*कर्बन[^\d:]*[:=\-\s]\s*([0-9]+(?:\.[0-9]+)?)", re.I),
     ],
     "ec_ds_m": [
         re.compile(r"(?:electrical\s*conductivity|conductiv|e\.?c\.?)[^\d:]*[:=\-\s]\s*([0-9]+(?:\.[0-9]+)?)", re.I),
         re.compile(r"\bEC\b[^\d:]*[:=\-]\s*([0-9]+(?:\.[0-9]+)?)", re.I),
+        re.compile(r"विद्युत\s*चालकता[^\d:]*[:=\-\s]\s*([0-9]+(?:\.[0-9]+)?)", re.I),
     ],
 }
 
@@ -519,6 +525,18 @@ def run_ocr_pipeline(data: bytes, filename: str) -> dict[str, Any]:
         f for f, v in fields.items()
         if v.get("confidence", 0) < 0.85 or v.get("value") is None
     ]
+
+    import logging
+    LOG = logging.getLogger(__name__)
+    LOG.info(
+        "OCR extraction complete: filename=%s engine=%s fields=%d review_needed=%d",
+        filename, engine, len(fields), len(needs_review),
+    )
+    if needs_review:
+        LOG.warning(
+            "OCR fields needing review (confidence < 0.85): %s",
+            ", ".join(needs_review),
+        )
 
     return {
         "status": "extracted" if blocks else "no_text_detected",

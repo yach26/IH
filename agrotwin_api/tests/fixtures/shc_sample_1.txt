@@ -1,0 +1,28 @@
+SOIL HEALTH CARD
+Government of Maharashtra
+Department of Agriculture
+
+Card No: MH5468/2024-25/208451
+Farmers Name: Ramesh Patil
+Village: Ajara
+Taluka: Ajara
+District: Kolhapur
+Date of Sampling: 15/06/2024
+
+Soil Test Results:
+Available Nitrogen (N): 210 kg/ha
+Available Phosphorus (P): 35 kg/ha
+Available Potassium (K): 310 kg/ha
+Soil pH: 7.9
+Organic Carbon: 0.62%
+Electrical Conductivity: 0.32 dS/m
+
+Micronutrients:
+Sulphur (S): 12 ppm
+Zinc (Zn): 0.8 ppm
+Iron (Fe): 4.5 ppm
+Copper (Cu): 0.3 ppm
+Manganese (Mn): 12 ppm
+Boron (B): 0.5 ppm
+
+Soil Testing Lab: Regional Soil Testing Laboratory, Kolhapur

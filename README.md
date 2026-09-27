@@ -2,56 +2,112 @@
 
 An Agentic, Evidence-Grounded Digital Twin for Continuous Farm Nutrient Monitoring and Sustainable Fertilizer Optimization.
 
+## Quick Start
+
+### Option 1: Docker Compose (Recommended)
+
+```bash
+# From repo root
+docker-compose up --build
+```
+
+This starts:
+- API at `http://localhost:8000`
+- Frontend at `http://localhost:3000`
+- API docs at `http://localhost:8000/docs`
+
+### Option 2: Local Development
+
+```bash
+# 1. Install Python dependencies
+cd agrotwin_api
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+
+# 2. Seed the database (disposable demo data)
+python seed_data.py
+
+# 3. Start the API
+uvicorn app.main:app --reload
+
+# 4. In another terminal, start the frontend
+cd ../agrotwin_frontend
+npm install
+npm run dev
+```
+
+### Option 3: One-Command Demo
+
+```bash
+cd agrotwin_api
+python ../scripts/demo_e2e.py
+```
+
+This runs the full end-to-end demo: seed -> OCR -> recommend -> heavy-rain -> what-if.
+
 ## Repository Layout
-- `agrotwin_api/`: Canonical running backend (FastAPI, SQLite / NeonDB PostgreSQL support, deterministic rules, optimizer, event bus, soil OCR confirmation, hybrid RAG).
-- `agrotwin_frontend/`: Minimalist, high-contrast, mobile-first Next.js web application.
-- `backend/`: Advanced RAG and ingestion engine (merged into `agrotwin_api` knowledge layer).
-- `archive/agrotwin_prototype/`: Superseded prototype folder moved to archive (preserved for reference).
-- `docs/`: Complete architectural specifications, schema, UX principles, and implementation notes.
 
-## Run the merged application
+- `agrotwini_api/` - FastAPI backend with deterministic Nutrient Ledger, optimizer, OCR, RAG, yield model
+- `agrotwin_frontend/` - Next.js frontend (separate repo)
+- `scripts/` - Demo and utility scripts
+- `docs/` - Architecture docs, OCR field guide, ADRs
+- `ml/` - Yield prediction model card and metadata
 
-Install Python dependencies from `agrotwin_api/requirements.txt` (a virtual
-environment is recommended). For a disposable demo database with all eight
-synthetic fields, start the API from `agrotwin_api`:
+## What is Real vs Synthetic vs Optional
 
-```text
-python scripts/demo_yield.py --serve
+| Component | Status | Notes |
+|-----------|--------|-------|
+| Nutrient Ledger | **Real** | Deterministic DAP->Urea->MOP calculation |
+| Fertilizer quantities | **Real** | Always from Ledger, never from LLM |
+| RDF values | **Real** | From published MAHAFPDF/ICAR documents |
+| Soil test data (8 fields) | **Synthetic** | Calibrated to published averages |
+| Yield model training data | **Synthetic** | Calibrated to published averages |
+| Yield model predictions | **Real** | XGBoost inference, but trained on synthetic data |
+| OCR pipeline | **Real** | EasyOCR + regex + LLM refinement |
+| SHC test fixtures | **Synthetic** | 5 text-based fixtures for testing |
+| LLM narratives | **Optional** | Groq/xAI, degrades gracefully |
+| Weather data | **Real** | Open-Meteo (free, no key needed) |
+| RAG documents | **Real** | Published agricultural PDFs |
+
+## Environment Variables
+
+See `.env.example` for all variables. Key ones:
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `DATABASE_URL` | (empty) | Postgres connection string; empty = SQLite |
+| `GROQ_API_KEY` | (empty) | Groq LLM API key (optional) |
+| `XAI_API_KEY` | (empty) | xAI/Grok API key (optional) |
+| `AGROTWIN_DB` | `./agrotwin_api/agrotwin.db` | SQLite file path |
+
+## Safety Guarantees
+
+1. **LLM never invents fertilizer quantities** - All kg/ha come from the deterministic Nutrient Ledger
+2. **Yield model is read-only** - It predicts yield given a plan; it never modifies the plan
+3. **OCR requires farmer confirmation** - No OCR value is written to the Digital Twin without explicit confirmation
+4. **System abstains gracefully** - When data is insufficient or confidence is too low
+5. **Proof-carrying** - Every recommendation answers: WHAT / HOW MUCH / WHEN / WHY / BASED ON WHAT / HOW SURE ARE WE
+
+## Testing
+
+```bash
+cd agrotwin_api
+python -m pytest tests/ -v
 ```
 
-Then in `agrotwin_frontend`, run `npm ci` followed by `npm run dev`.
-The dashboard is at `http://localhost:3000`; API documentation is at
-`http://127.0.0.1:8000/docs`. The yield endpoint remains available at
-`/fields/SYN-003/yield-estimate?rainfall_mm_season=1100`.
+## Documentation
 
-For a persistent local deployment, seed a **new/disposable** database with
-`python seed_data.py` from `agrotwin_api`, then run `uvicorn app.main:app`.
-The seeder resets its target database; do not use it on existing farm data.
-Database files are no longer tracked in Git. Initialize the local SQLite file
-before using the Docker Compose file's database bind mount.
+- [Model Card](agrotwin_api/ml/model_card.md) - Honest limitations of the yield model
+- [OCR Fields](docs/OCR_FIELDS.md) - Which fields are extracted vs manual
+- [Architecture Decision Record](docs/ADR.md) - Why quantities stay deterministic
+- [Demo Script](scripts/demo_e2e.py) - One-command end-to-end demo
 
-Optional LLM narratives and OCR suggestions use `GROQ_API_KEY` / `GROQ_MODEL`
-or `XAI_API_KEY` / `XAI_MODEL`, exported in the API process environment.
-For uvicorn, `--env-file ../.env` loads a local configuration file; copying
-`.env.example` alone does not load variables. Compose passes these variables
-to the API container. No key is needed for deterministic recommendations,
-yield inference, OCR, or local RAG retrieval. Provider failures leave narrative
-text empty. Requests have a 10-second timeout and no retries. Groq keys in the
-legacy `XAI_API_KEY` variable remain supported.
+## Remaining External Items
 
-Default models are configurable: [Groq Llama 3.3 70B](https://console.groq.com/docs/model/llama-3.3-70b-versatile)
-and [xAI Grok 4.3](https://docs.x.ai/developers/migration/may-15-retirement).
-Credentials are server-side only. EasyOCR downloads its weights on first use
-into `agrotwin_api/.cache/easyocr`; override with `AGROTWIN_OCR_MODELS` if needed.
-Low-confidence OCR and LLM-assisted values remain flagged for farmer confirmation.
+The following require team/external resources and are NOT blockers for the demo:
 
-## Validation
-
-```text
-python -m pytest agrotwin_api/tests backend/tests -q
-cd agrotwin_frontend
-npm run lint
-npm run build
-```
-
-See `GROQ_MERGE_VALIDATION.md` for merge fixes and verification limits.
+1. **Real Soil Health Cards** - Actual farmer SHC images for OCR validation
+2. **Production DATABASE_URL** - Managed Postgres (e.g., Neon) for production deployment
+3. **Real historical yield data** - For retraining the yield model with real farm data
+4. **Fertilizer price data** - For cost-aware optimization (currently weight-minimization)

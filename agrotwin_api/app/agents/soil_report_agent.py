@@ -203,6 +203,13 @@ def confirm_and_write(
            WHERE upload_id = ?""",
         (now, soil_test_id, upload_id),
     )
+    import logging
+    LOG = logging.getLogger(__name__)
+    LOG.info(
+        "OCR confirmed: upload_id=%d field_id=%d actor=%s N=%s P=%s K=%s",
+        upload_id, upload["field_id"], actor,
+        confirmed["n_kg_ha"], confirmed["p_kg_ha"], confirmed["k_kg_ha"],
+    )
     conn.execute(
         """INSERT INTO audit_log (entity_type, entity_id, action, actor, new_value)
            VALUES (?,?,?,?,?)""",

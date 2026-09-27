@@ -91,3 +91,56 @@ def test_invalid_rainfall(client, rain):
 
 def test_unknown_field(client):
     assert client.get('/fields/unknown/yield-estimate?rainfall_mm_season=1100').status_code == 404
+
+
+def test_extrapolation_flag_present(client, conn, field_row):
+    """The response must include an explicit extrapolation boolean."""
+    response = client.get('/fields/TEST-001/yield-estimate?rainfall_mm_season=1100')
+    assert response.status_code == 200
+    prediction = response.json()['yield_prediction']
+    assert 'extrapolation' in prediction
+    assert isinstance(prediction['extrapolation'], bool)
+
+
+def test_extrapolation_triggered_by_rainfall(client, conn, field_row):
+    """Rainfall outside the training range must set extrapolation=True."""
+    # Kolhapur training range is 900-1300mm; 500mm is well below
+    response = client.get('/fields/TEST-001/yield-estimate?rainfall_mm_season=500')
+    assert response.status_code == 200
+    prediction = response.json()['yield_prediction']
+    assert prediction['extrapolation'] is True
+    assert any('outside' in c.lower() for c in prediction['caveats'])
+
+
+def test_no_extrapolation_within_range(client, conn, field_row):
+    """Rainfall within the training range must set extrapolation=False."""
+    response = client.get('/fields/TEST-001/yield-estimate?rainfall_mm_season=1100')
+    assert response.status_code == 200
+    prediction = response.json()['yield_prediction']
+    assert prediction['extrapolation'] is False
+
+
+def test_ledger_quantities_unchanged_after_prediction(client, conn, field_row):
+    """Ledger plan_kg_ha must be identical before and after yield prediction."""
+    before = ledger.run_field_ledger(conn, field_row)
+    before_plan = json.dumps(before['plan_kg_ha'], sort_keys=True)
+    before_required = json.dumps(before['required'], sort_keys=True)
+
+    client.get('/fields/TEST-001/yield-estimate?rainfall_mm_season=1100')
+
+    after = ledger.run_field_ledger(conn, field_row)
+    after_plan = json.dumps(after['plan_kg_ha'], sort_keys=True)
+    after_required = json.dumps(after['required'], sort_keys=True)
+
+    assert before_plan == after_plan
+    assert before_required == after_required
+
+
+def test_abstain_includes_extrapolation_false(client, conn, field_row):
+    """Abstained predictions must include extrapolation=False."""
+    conn.execute("UPDATE crops SET crop_code='RICE'")
+    response = client.get('/fields/TEST-001/yield-estimate?rainfall_mm_season=1100')
+    assert response.status_code == 200
+    prediction = response.json()['yield_prediction']
+    assert prediction['status'] == 'ABSTAIN'
+    assert prediction['extrapolation'] is False
