@@ -6,7 +6,7 @@ import json
 import os
 import sqlite3
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from datetime import datetime
 
 from ..agents.monitoring_agent import get_alerts, get_monitoring_agent
@@ -56,6 +56,17 @@ def _field_row(conn: sqlite3.Connection, field_ref: str) -> sqlite3.Row:
 @router.get("/health")
 def health():
     return {"status": "ok", "service": "agrotwin"}
+
+
+@router.get("/fields/{field_id}/yield-estimate")
+def yield_estimate(
+    field_id: str,
+    rainfall_mm_season: float | None = Query(default=None, ge=0, allow_inf_nan=False),
+    conn: sqlite3.Connection = Depends(get_conn),
+):
+    from ..yield_prediction import estimate
+
+    return estimate(conn, _field_row(conn, field_id), rainfall_mm_season)
 
 
 @router.get("/fields/{field_id}/twin")

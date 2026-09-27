@@ -92,3 +92,54 @@ Every kg/ha number in `output/ledger_results.csv` can be traced to:
 - a specific `soil_test_id` (→ the synthetic record it came from).
 
 No number in this prototype was invented.
+# Yield estimates (additive ML integration)
+
+Install dependencies with `python -m pip install -r requirements.txt`.
+The trained model is bundled under `ml/`; no external temp folder is needed.
+
+```text
+GET /fields/{field_id_or_code}/yield-estimate?rainfall_mm_season=1100
+```
+
+The response contains the unchanged `ledger` result and a separate
+`yield_prediction` with predicted kg/ha, band, confidence, model version,
+reason, caveats, and evaluated nutrient inputs. Supply the season-total
+rainfall explicitly. Seven-day forecasts are never substituted for it.
+Missing required data or unsupported scope returns `ABSTAIN`; missing model,
+inference failure, timeout (15 seconds), or busy workers returns `UNAVAILABLE`.
+Unknown fields return 404; invalid rainfall returns 422. This GET does not
+persist predictions or change recommendations, events, or fertilizer quantities.
+Existing recommendation endpoints retain their behavior. No schema migration
+is needed. The service evaluates the freshly computed ledger plan, not a
+previous agronomist override.
+
+Quick working demo with all eight synthetic fields and their crop assignments:
+
+```powershell
+cd agrotwin_api
+python scripts/demo_yield.py
+# Or start an HTTP server using a separate temporary demo database:
+python scripts/demo_yield.py --serve
+```
+
+Then open `http://127.0.0.1:8000/fields/SYN-003/yield-estimate?rainfall_mm_season=1100`
+or `/docs`. Demo rainfall is an explicit example, not an observed season total.
+The existing database is preserved; fields without active crops abstain until
+their crop assignments are supplied. The demo prepares these assignments only
+in its own temporary database.
+
+AgroTwin can now estimate expected yield from the fertilizer plan its Nutrient
+Ledger already calculated. It converts product quantities to supplied nutrients
+using stored fertilizer compositions, combines them with soil and seasonal
+rainfall, and runs the supplied crop model. Yield confidence and caveats remain
+separate from fertilizer confidence, and model failure leaves the existing
+recommendation system available.
+
+**Limitations:** training is entirely synthetic, so reported accuracy is not
+validated farm accuracy. Jalgaon soils are extrapolated; exact STCR coefficients
+were unavailable; nutrient uptake efficiencies are approximate; water response
+omits timing, drainage, and moisture retention. Coverage is four crops and two
+districts. Gap-based fertilizer plans can extrapolate beyond training rates.
+Real farm records are needed for retraining. See [full limitations and runtime
+compatibility notes](ml/README.md); original training dependency pins were not
+provided, and the supplied artifact produces an XGBoost serialization warning.
