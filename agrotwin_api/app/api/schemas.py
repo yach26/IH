@@ -20,7 +20,17 @@ class SoilTestIn(BaseModel):
     original_file_path: str | None = None
 
 
+class CropAssignRequest(BaseModel):
+    crop_code: str
+    variety: str | None = None
+    sowing_date: str | None = None
+    current_stage: str | None = None
+    recommendation_type: str | None = None
+    target_yield_kg_ha: float | None = None
+
+
 class SoilReportConfirmRequest(BaseModel):
+    upload_id: int | None = None
     soil_test: SoilTestIn
 
 
@@ -40,6 +50,10 @@ class RecommendRequest(BaseModel):
     agents: list[str] | None = Field(
         default=None,
         description="If set, selective re-plan of these agents only.",
+    )
+    optimizer: str | None = Field(
+        default="heuristic",
+        description="Optimizer to use: 'heuristic' (default) or 'linprog' (scipy multi-objective).",
     )
     mock_weather: dict[str, Any] | None = None
     farmer_input: dict[str, Any] | None = None

@@ -1,17 +1,10 @@
 -- ============================================================
--- AgroTwin AI — Digital Twin schema (SQLite port of the frozen
--- Postgres DDL from 11_Digital_Twin_Schema/01_digital_twin_schema.sql)
--- Kept table/column names identical for a 1:1 mapping back to Postgres.
--- Type changes only: SERIAL->INTEGER PK, JSONB->TEXT, GEOMETRY->TEXT,
--- TIMESTAMPTZ->TEXT, BOOLEAN kept (SQLite stores as 0/1).
+-- AgroTwin AI — Digital Twin schema (SQLite)
 --
--- Phase-2 additions (doc 03_DATABASE_SCHEMA.md):
---   - field_crops: one active crop per field
---   - weather_snapshots: cached Open-Meteo forecasts
---   - events: audit event stream (HEAVY_RAIN_ALERT, SOIL_REPORT_UPDATED, …)
---   - audit_log: extended with actor/old_value/new_value columns
---   - recommendations: added invalidated_at, superseded_by
---   - Indexes on (field_id, created_at DESC) for fast "latest" queries
+-- CRITICAL DRIFT GUARD:
+-- schema_sqlite.sql and schema_postgres.sql MUST be kept structurally identical.
+-- Integer primary keys and integer foreign keys are used consistently
+-- across both engines to ensure full compatibility with the application layer.
 -- ============================================================
 
 PRAGMA foreign_keys = ON;

@@ -106,9 +106,10 @@ def run_field_ledger(conn: sqlite3.Connection, field_row: sqlite3.Row) -> dict:
         "current_stage": field_row["current_stage"] or "UNKNOWN",
         "row": {
             "record_id": record_id,
-            "N_kg_ha": soil_row["n_kg_ha"] or 0.0,
-            "P_kg_ha": soil_row["p_kg_ha"] or 0.0,
-            "K_kg_ha": soil_row["k_kg_ha"] or 0.0,
+            # float() cast: PostgreSQL NUMERIC arrives as Decimal, SQLite as float
+            "N_kg_ha": float(soil_row["n_kg_ha"]) if soil_row["n_kg_ha"] is not None else 0.0,
+            "P_kg_ha": float(soil_row["p_kg_ha"]) if soil_row["p_kg_ha"] is not None else 0.0,
+            "K_kg_ha": float(soil_row["k_kg_ha"]) if soil_row["k_kg_ha"] is not None else 0.0,
         },
     }
     rec_type_map = {record_id: rec_type}
@@ -163,7 +164,7 @@ def write_ledger_result(conn: sqlite3.Connection, result: dict) -> int | None:
                 result.get("reason", ""),
                 json.dumps([]),
                 json.dumps(result.get("flags", [])),
-                0,
+                False,          # is_synthetic: bool (PostgreSQL BOOLEAN)
                 "ABSTAINED",
             ),
         )
@@ -200,7 +201,7 @@ def write_ledger_result(conn: sqlite3.Connection, result: dict) -> int | None:
             "; ".join(result.get("flags", [])),
             json.dumps(result.get("flags", [])),
             result.get("confidence", "MEDIUM"),
-            0,
+            False,          # is_synthetic: bool (PostgreSQL BOOLEAN)
         ),
     )
     ledger_id = cur.lastrowid
@@ -223,7 +224,7 @@ def write_ledger_result(conn: sqlite3.Connection, result: dict) -> int | None:
             "; ".join(result.get("flags", [])),
             json.dumps([result.get("citation", "")]),
             json.dumps(result.get("flags", [])),
-            0,
+            False,          # is_synthetic: bool (PostgreSQL BOOLEAN)
             "PROPOSED",
         ),
     )

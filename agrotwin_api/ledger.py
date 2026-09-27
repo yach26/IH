@@ -29,20 +29,46 @@ def get_recommendation(conn, crop_code, rec_type):
            WHERE c.crop_code = ? AND fr.recommendation_type = ?""",
         (crop_code, rec_type),
     )
-    return cur.fetchone()
+    row = cur.fetchone()
+    if row is None:
+        return None
+    # Support both sqlite3.Row (index-able) and psycopg3 dict row
+    if hasattr(row, 'keys'):
+        return (row["n_kg_ha"], row["p2o5_kg_ha"], row["k2o_kg_ha"],
+                row["source_citation"], row["notes"])
+    return tuple(row)
 
 
 def get_products(conn):
     cur = conn.cursor()
     cur.execute("SELECT product_code, n_percent, p2o5_percent, k2o_percent FROM fertilizer_products")
-    return {code: {"n": n, "p2o5": p, "k2o": k} for code, n, p, k in cur.fetchall()}
+    rows = cur.fetchall()
+    result = {}
+    for row in rows:
+        # Support both sqlite3.Row (index-able) and psycopg3 dict row
+        if hasattr(row, 'keys'):
+            code = row["product_code"]
+            n, p, k = row["n_percent"], row["p2o5_percent"], row["k2o_percent"]
+        else:
+            code, n, p, k = row
+        # cast to float: SQLite returns float, PostgreSQL NUMERIC returns Decimal
+        result[code] = {"n": float(n), "p2o5": float(p), "k2o": float(k)}
+    return result
 
 
 def compute_gap(required_n, required_p2o5, required_k2o, soil_n, soil_p_proxy, soil_k):
-    """gap = required - available (no loss subtraction; losses unsourced)."""
-    gap_n = max(0.0, round(required_n - soil_n, 1)) if required_n is not None else None
-    gap_p2o5 = max(0.0, round(required_p2o5 - soil_p_proxy, 1)) if required_p2o5 is not None else None
-    gap_k2o = max(0.0, round(required_k2o - soil_k, 1)) if required_k2o is not None else None
+    """gap = required - available (no loss subtraction; losses unsourced).
+    All inputs are cast to float to handle both SQLite float and PostgreSQL Decimal.
+    """
+    def _f(v):
+        return float(v) if v is not None else None
+
+    rn, rp, rk = _f(required_n), _f(required_p2o5), _f(required_k2o)
+    sn, sp, sk = float(soil_n), float(soil_p_proxy), float(soil_k)
+
+    gap_n    = max(0.0, round(rn - sn, 1)) if rn is not None else None
+    gap_p2o5 = max(0.0, round(rp - sp, 1)) if rp is not None else None
+    gap_k2o  = max(0.0, round(rk - sk, 1)) if rk is not None else None
     return gap_n, gap_p2o5, gap_k2o
 
 
@@ -83,6 +109,10 @@ def run_field(conn, field_id, field_meta, rec_type_map):
         }
 
     required_n, required_p2o5, required_k2o, citation, notes = rec
+    # Cast NUMERIC → float (safe for both SQLite float and PostgreSQL Decimal)
+    required_n    = float(required_n)    if required_n    is not None else None
+    required_p2o5 = float(required_p2o5) if required_p2o5 is not None else None
+    required_k2o  = float(required_k2o)  if required_k2o  is not None else None
 
     if crop_code == "BANANA":
         flags.append("DERIVED_DENSITY (Banana kg/ha derived from g/plant x mid-point "

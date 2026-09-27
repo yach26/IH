@@ -24,6 +24,7 @@ from typing import Any
 from ..core.event_bus import get_bus
 from ..core.events import Event, EventType
 from . import soil_agent
+from ..db import _json_load
 
 CONFIDENCE_REVIEW_THRESHOLD = 0.85
 UPLOAD_DIR = os.path.abspath(
@@ -100,21 +101,66 @@ def extract_from_bytes(filename: str, data: bytes) -> tuple[dict[str, dict[str, 
     return extracted, "regex_fallback"
 
 
-def _try_ocr(data: bytes, name: str) -> tuple[str | None, str]:
-    """Optional PaddleOCR / EasyOCR. Never required for the MVP path."""
+def _extract_text_from_pdf(data: bytes) -> str:
+    """Extract readable text from a PDF byte array without requiring external binaries."""
     try:
-        if name.endswith(".pdf"):
-            return None, "pdf_not_decoded"
+        import pypdf
+        import io
+        reader = pypdf.PdfReader(io.BytesIO(data))
+        text = "\n".join(page.extract_text() or "" for page in reader.pages)
+        if text.strip():
+            return text
     except Exception:
         pass
     try:
-        import easyocr  # type: ignore
-
-        reader = easyocr.Reader(["en"], gpu=False)
-        # EasyOCR wants a file path; skip in-memory for MVP
-        return None, "easyocr_skipped_in_memory"
+        import zlib
+        found_texts = []
+        for stream in re.findall(b"stream[\r\n]+(.*?)[\r\n]+endstream", data, re.DOTALL):
+            try:
+                decomp = zlib.decompress(stream)
+            except Exception:
+                decomp = stream
+            for m in re.finditer(rb"\(([^\(\)]+)\)", decomp):
+                try:
+                    found_texts.append(m.group(1).decode("latin-1"))
+                except Exception:
+                    pass
+        if found_texts:
+            return " ".join(found_texts)
     except Exception:
-        return None, "no_ocr_engine"
+        pass
+    return ""
+
+
+def _try_ocr(data: bytes, name: str) -> tuple[str | None, str]:
+    """Optional PDF text extractor and EasyOCR."""
+    if name.endswith(".pdf"):
+        pdf_text = _extract_text_from_pdf(data)
+        if pdf_text and len(pdf_text.strip()) > 5:
+            return pdf_text, "pdf_text_extractor"
+    try:
+        import easyocr  # type: ignore
+        import tempfile
+
+        ext = os.path.splitext(name)[1] or ".png"
+        with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+            tmp.write(data)
+            tmp_path = tmp.name
+        try:
+            reader = easyocr.Reader(["en"], gpu=False)
+            results = reader.readtext(tmp_path, detail=0)
+            ocr_text = "\n".join(results)
+            if ocr_text.strip():
+                return ocr_text, "easyocr"
+        finally:
+            if os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    return None, "no_ocr_engine"
 
 
 def needs_review(extracted: dict[str, dict[str, Any]]) -> list[str]:
@@ -162,8 +208,8 @@ def get_upload(conn: sqlite3.Connection, upload_id: int) -> dict | None:
         return None
     data = dict(row)
     try:
-        data["extracted"] = json.loads(data["extracted_json"] or "{}")
-    except json.JSONDecodeError:
+        data["extracted"] = _json_load(data["extracted_json"])
+    except (json.JSONDecodeError, TypeError):
         data["extracted"] = {}
     return data
 

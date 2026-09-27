@@ -9,28 +9,30 @@ import sqlite3
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from datetime import datetime
 
+from ..agents import soil_report_agent
 from ..agents.monitoring_agent import get_alerts, get_monitoring_agent
 from ..agents.orchestrator import request_replan, run_orchestrated_ledger
 from ..core.event_bus import get_bus
 from ..core.events import Event
-from .schemas import EventIn, RecommendRequest, RecommendationOut, SoilReportConfirmRequest, WhatIfRequest, OverrideRequest
+from .schemas import (
+    CropAssignRequest,
+    EventIn,
+    RecommendRequest,
+    RecommendationOut,
+    SoilReportConfirmRequest,
+    WhatIfRequest,
+    OverrideRequest,
+)
 from ..core.ocr import save_upload_file, run_ocr_on_file
 
 router = APIRouter()
 
 
-def get_db_path() -> str:
-    return os.environ.get(
-        "AGROTWIN_DB",
-        os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "agrotwin.db")),
-    )
+from ..db import get_db_connection, _json_load
 
 
 def get_conn():
-    path = get_db_path()
-    conn = sqlite3.connect(path)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
+    conn = get_db_connection()
     try:
         yield conn
     finally:
@@ -74,7 +76,7 @@ def get_twin(field_id: str, conn: sqlite3.Connection = Depends(get_conn)):
     plan = None
     if rec:
         try:
-            plan = json.loads(rec["plan_json"] or "{}")
+            plan = _json_load(rec["plan_json"])
         except json.JSONDecodeError:
             plan = {"raw": rec["plan_json"]}
         plan["status_db"] = rec["status"]
@@ -101,6 +103,7 @@ def recommend(
             row,
             agents=body.agents,
             mock_weather=body.mock_weather,
+            optimizer=body.optimizer,
         )
     else:
         result = run_orchestrated_ledger(
@@ -108,6 +111,7 @@ def recommend(
             row,
             mock_weather=body.mock_weather,
             farmer_input=body.farmer_input,
+            optimizer=body.optimizer,
         )
     return result
 
@@ -123,7 +127,7 @@ def latest_recommendation(field_id: str, conn: sqlite3.Connection = Depends(get_
     if rec is None:
         raise HTTPException(status_code=404, detail="No recommendation yet")
     try:
-        plan = json.loads(rec["plan_json"] or "{}")
+        plan = _json_load(rec["plan_json"])
     except json.JSONDecodeError:
         plan = {}
     plan["status_db"] = rec["status"]
@@ -183,7 +187,7 @@ def inject_event(body: EventIn, conn: sqlite3.Connection = Depends(get_conn)):
     plan: dict = {}
     if latest:
         try:
-            plan = json.loads(latest["plan_json"] or "{}")
+            plan = _json_load(latest["plan_json"])
         except json.JSONDecodeError:
             plan = {}
         plan["status_db"] = latest["status"]
@@ -206,6 +210,69 @@ def inject_event(body: EventIn, conn: sqlite3.Connection = Depends(get_conn)):
     }
 
 
+@router.post("/fields/{field_id}/crop")
+def assign_crop(
+    field_id: str,
+    body: CropAssignRequest,
+    conn: sqlite3.Connection = Depends(get_conn),
+):
+    """
+    Assign or update a field's active crop, sowing date, stage, and recommendation type.
+    """
+    row = _field_row(conn, field_id)
+    crop = conn.execute(
+        "SELECT crop_id FROM crops WHERE UPPER(crop_code) = ?",
+        (body.crop_code.upper().strip(),),
+    ).fetchone()
+    if crop is None:
+        raise HTTPException(status_code=400, detail=f"Unknown crop_code: {body.crop_code}")
+    crop_id = crop["crop_id"]
+
+    # Deactivate previous active crop
+    conn.execute(
+        "UPDATE field_crops SET is_active = 0 WHERE field_id = ?",
+        (row["field_id"],),
+    )
+
+    cur = conn.cursor()
+    cur.execute(
+        """INSERT INTO field_crops
+           (field_id, crop_id, variety, sowing_date, current_stage,
+            recommendation_type, target_yield_kg_ha, is_active)
+           VALUES (?, ?, ?, ?, ?, ?, ?, 1)""",
+        (
+            row["field_id"],
+            crop_id,
+            body.variety,
+            body.sowing_date,
+            body.current_stage,
+            body.recommendation_type,
+            body.target_yield_kg_ha,
+        ),
+    )
+    conn.commit()
+
+    monitor = get_monitoring_agent()
+    monitor.bind(conn)
+    event = Event.create(
+        "CROP_STAGE_CHANGED",
+        field_id=row["field_id"],
+        field_code=row["field_code"],
+        payload=body.model_dump(),
+        actor="farmer",
+    )
+    get_bus().publish(event, conn=conn)
+
+    return {
+        "status": "success",
+        "field_id": row["field_id"],
+        "crop_id": crop_id,
+        "crop_code": body.crop_code.upper().strip(),
+        "current_stage": body.current_stage,
+        "recommendation_type": body.recommendation_type,
+    }
+
+
 @router.post("/fields/{field_id}/soil-report/upload")
 def upload_soil_report(
     field_id: str,
@@ -213,16 +280,25 @@ def upload_soil_report(
     conn: sqlite3.Connection = Depends(get_conn)
 ):
     """
-    Step 1: Upload a soil report, run OCR, and return extracted fields.
-    The frontend should present this to the farmer for confirmation.
+    Step 1: Upload a soil report, run real extraction via soil_report_agent,
+    and return extracted fields with per-field confidence.
     """
     row = _field_row(conn, field_id)
-    file_path = save_upload_file(file, file.filename)
-    extracted_data = run_ocr_on_file(file_path)
+    contents = file.file.read()
+    res = soil_report_agent.process_upload(
+        conn,
+        row["field_id"],
+        file.filename or "report.txt",
+        contents,
+    )
     return {
-        "status": "extracted",
-        "file_path": file_path,
-        "extracted_data": extracted_data
+        "status": res["status"],
+        "upload_id": res["upload_id"],
+        "file_path": res["original_file_path"],
+        "extracted_data": res["extracted"],
+        "fields_needing_review": res["fields_needing_review"],
+        "engine": res["engine"],
+        "message": res["message"],
     }
 
 
@@ -236,8 +312,20 @@ def confirm_soil_report(
     Step 2: Farmer confirms the OCR values. Save to twin and trigger event.
     """
     row = _field_row(conn, field_id)
+    if body.upload_id:
+        confirmed = {
+            "n_kg_ha": body.soil_test.n_kg_ha,
+            "p_kg_ha": body.soil_test.p_kg_ha,
+            "k_kg_ha": body.soil_test.k_kg_ha,
+            "ph": body.soil_test.ph,
+            "oc_percent": body.soil_test.oc_percent,
+            "ec_ds_m": body.soil_test.ec_ds_m,
+            "test_date": body.soil_test.test_date,
+        }
+        res = soil_report_agent.confirm_and_write(conn, body.upload_id, confirmed, actor="farmer")
+        return {"status": "success", "message": "Soil report confirmed and Twin updated.", "details": res}
+
     test_date = body.soil_test.test_date or datetime.utcnow().strftime("%Y-%m-%d")
-    
     cur = conn.cursor()
     cur.execute(
         """INSERT INTO soil_tests 
@@ -295,7 +383,7 @@ def what_if_simulator(
     original_plan = {}
     if current_rec:
         try:
-            original_plan = json.loads(current_rec["plan_json"] or "{}")
+            original_plan = _json_load(current_rec["plan_json"])
         except:
             pass
 
@@ -357,7 +445,7 @@ def agronomist_override(
     cur.execute(
         """INSERT INTO recommendations 
            (field_id, plan_json, status, confidence, confidence_reason, is_synthetic)
-           VALUES (?, ?, 'PROPOSED', 'HIGH', 'Agronomist Override', 0)""",
+           VALUES (?, ?, 'PROPOSED', 'HIGH', 'Agronomist Override', false)""",
         (row["field_id"], json.dumps(body.new_plan))
     )
     new_rec_id = cur.lastrowid

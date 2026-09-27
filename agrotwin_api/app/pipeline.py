@@ -27,9 +27,10 @@ from .agents import crop_agent, knowledge_agent, soil_agent, weather_agent
 from .agents.twin_state import compute_confidence, make_empty_twin_state
 from .core.event_bus import get_bus
 from .core.events import Event, EventType
-from .core.optimizer import HeuristicOptimizer, Optimizer, OptimizerPlan
+from .core.optimizer import HeuristicOptimizer, Optimizer, OptimizerPlan, get_optimizer
 from .core.proof import assemble_proof
 from .core.rules import RuleEngine
+from .db import _json_load
 
 FULL_STEPS = (
     "input_validation",
@@ -89,12 +90,16 @@ class RecommendationPipeline:
         field_row: sqlite3.Row,
         *,
         agents: Iterable[str] | None = None,
+        optimizer: Optimizer | str | None = None,
         mock_weather: dict | None = None,
         farmer_input: dict | None = None,
         previous_plan: dict | None = None,
         emit_events: bool = True,
         persist: bool = True,
     ) -> dict[str, Any]:
+        opt = self.optimizer
+        if optimizer:
+            opt = get_optimizer(optimizer) if isinstance(optimizer, str) else optimizer
         field_id = field_row["field_id"]
         field_code = field_row["field_code"]
         mode = "full" if not agents else "partial_replan"
@@ -252,13 +257,13 @@ class RecommendationPipeline:
         twin["flags"].extend(ledger_result.get("flags") or [])
         twin["current_plan"] = ledger_result
 
-        # ── 7. Optimizer (heuristic by default) ─────────────────────────
+        # ── 7. Optimizer (heuristic by default, or linprog) ─────────────
         optimizer_plan: OptimizerPlan | None = None
         optimizer_dict: dict | None = None
         if "optimizer" in requested and ledger_result.get("status") != "ABSTAIN":
             agents_run.append("optimizer")
-            optimizer_plan = self.optimizer.optimize(twin, candidates=None)
-            # Enforce: quantities must match ledger heuristic (no silent swap)
+            optimizer_plan = opt.optimize(twin, candidates=None)
+            # Enforce: quantities must match ledger heuristic if using heuristic
             ledger_qty = ledger_result.get("plan_kg_ha") or {}
             optimizer_dict = {
                 "status": "OK",
@@ -270,15 +275,16 @@ class RecommendationPipeline:
                 "optimizer_id": optimizer_plan.optimizer_id,
                 "message": optimizer_plan.message,
             }
-            # Prefer ledger plan_kg_ha as numeric truth; optimizer must not drift.
-            for k in ("DAP_kg_ha", "UREA_kg_ha", "MOP_kg_ha"):
-                if k in ledger_qty and k in optimizer_plan.plan_kg_ha:
-                    if float(optimizer_plan.plan_kg_ha[k]) != float(ledger_qty[k]):
-                        optimizer_dict["flag"] = (
-                            "OPTIMIZER_LEDGER_MISMATCH — falling back to ledger quantities"
-                        )
-                        optimizer_plan.plan_kg_ha = ledger_qty
-                        optimizer_dict["plan_kg_ha"] = ledger_qty
+            # Prefer ledger plan_kg_ha as numeric truth when heuristic is selected
+            if getattr(opt, "optimizer_id", "") == "heuristic_dap_urea_mop":
+                for k in ("DAP_kg_ha", "UREA_kg_ha", "MOP_kg_ha"):
+                    if k in ledger_qty and k in optimizer_plan.plan_kg_ha:
+                        if float(optimizer_plan.plan_kg_ha[k]) != float(ledger_qty[k]):
+                            optimizer_dict["flag"] = (
+                                "OPTIMIZER_LEDGER_MISMATCH — falling back to ledger quantities"
+                            )
+                            optimizer_plan.plan_kg_ha = ledger_qty
+                            optimizer_dict["plan_kg_ha"] = ledger_qty
             twin["flags"].extend(
                 [optimizer_dict[k] for k in ("flag",) if optimizer_dict.get(k)]
             )
@@ -487,8 +493,8 @@ class RecommendationPipeline:
         out = []
         for r in rows:
             try:
-                plan = json.loads(r["plan_json"] or "{}")
-            except json.JSONDecodeError:
+                plan = _json_load(r["plan_json"])
+            except (json.JSONDecodeError, TypeError):
                 plan = {}
             plan["recommendation_id"] = r["recommendation_id"]
             plan["status_db"] = r["status"]

@@ -14,21 +14,41 @@ Nothing here is invented. Where a real number was missing, see
 import sqlite3
 import csv
 import os
+import sys
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "agrotwin.db")
-SCHEMA_PATH = os.path.join(os.path.dirname(__file__), "schema_sqlite.sql")
+_api_root = os.path.abspath(os.path.dirname(__file__))
+if _api_root not in sys.path:
+    sys.path.insert(0, _api_root)
+
+from app.db import get_db_connection, init_db, is_postgres, AGROTWIN_DB
+
+DB_PATH = AGROTWIN_DB
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 
 
 def build_db():
-    if os.path.exists(DB_PATH):
-        os.remove(DB_PATH)
-    conn = sqlite3.connect(DB_PATH)
-    conn.execute("PRAGMA foreign_keys = ON")
-    with open(SCHEMA_PATH) as f:
-        conn.executescript(f.read())
-    conn.commit()
-    return conn
+    if not is_postgres():
+        if os.path.exists(DB_PATH):
+            os.remove(DB_PATH)
+        init_db()
+        return get_db_connection()
+    else:
+        init_db()
+        conn = get_db_connection()
+        tables = [
+            "soil_report_uploads", "audit_log", "alerts", "events", "weather_snapshots",
+            "recommendations", "nutrient_ledger_entries", "applications", "soil_tests",
+            "fertilizer_recommendations", "fertilizer_products", "field_crops", "crop_calendars",
+            "crops", "fields", "farmers", "talukas", "districts", "regions"
+        ]
+        cur = conn.cursor()
+        for t in tables:
+            try:
+                cur.execute(f"TRUNCATE TABLE {t} RESTART IDENTITY CASCADE")
+            except Exception:
+                pass
+        conn.commit()
+        return conn
 
 
 def seed_regions_districts_talukas(conn):
@@ -72,7 +92,7 @@ def seed_regions_districts_talukas(conn):
     for t in kolhapur_talukas:
         cur.execute(
             "INSERT INTO talukas (district_id, taluka_code, taluka_name, is_pilot) VALUES (?,?,?,?)",
-            (kolhapur_id, t.upper(), t, 1 if t in pilot_kolhapur else 0),
+            (kolhapur_id, t.upper(), t, True if t in pilot_kolhapur else False),
         )
 
     jalgaon_talukas = [
@@ -84,7 +104,7 @@ def seed_regions_districts_talukas(conn):
     for t in jalgaon_talukas:
         cur.execute(
             "INSERT INTO talukas (district_id, taluka_code, taluka_name, is_pilot) VALUES (?,?,?,?)",
-            (jalgaon_id, t.upper(), t, 1 if t in pilot_jalgaon else 0),
+            (jalgaon_id, t.upper(), t, True if t in pilot_jalgaon else False),
         )
 
     conn.commit()
@@ -227,7 +247,7 @@ def seed_fields_and_soil_tests(conn, region_id, district_ids, crop_ids):
                     irrigation_type, is_synthetic, label_note)
                    VALUES (?,?,?,?,?,?,?,?)""",
                 (region_id, district_id, taluka_id, rid, float(row["field_area_ha"]),
-                 row["irrigation_type"], 1, row["label"]),
+                 row["irrigation_type"], True, row["label"]),
             )
             field_id = cur.lastrowid
             field_ids[rid] = {"field_id": field_id, "crop_code": crop_code,
@@ -240,7 +260,24 @@ def seed_fields_and_soil_tests(conn, region_id, district_ids, crop_ids):
                    VALUES (?,?,?,?,?,?,?,?,?,?)""",
                 (field_id, row["soil_test_date"], float(row["N_kg_ha"]),
                  float(row["P_kg_ha"]), float(row["K_kg_ha"]), float(row["pH"]),
-                 float(row["OC_percent"]), "SYNTHETIC", 1, row["label"]),
+                 float(row["OC_percent"]), "SYNTHETIC", True, row["label"]),
+            )
+
+            rec_type = RECOMMENDATION_TYPE_BY_RECORD.get(rid, "FULL_SEASON")
+            cur.execute(
+                """INSERT INTO field_crops
+                   (field_id, crop_id, variety, sowing_date, current_stage,
+                    recommendation_type, is_active)
+                   VALUES (?,?,?,?,?,?,?)""",
+                (
+                    field_id,
+                    crop_ids[crop_code],
+                    row.get("variety"),
+                    row.get("sowing_date"),
+                    row.get("current_stage"),
+                    rec_type,
+                    True,
+                ),
             )
     conn.commit()
     return field_ids

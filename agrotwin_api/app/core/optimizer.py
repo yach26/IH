@@ -118,5 +118,60 @@ class HeuristicOptimizer:
         )
 
 
+class ScipyLinprogOptimizer:
+    """
+    Linprog multi-objective optimizer (solves LP to minimize fertilizer mass
+    subject to N, P2O5, K2O constraints using available FCO products).
+    """
+
+    optimizer_id = "scipy_linprog"
+
+    def optimize(self, twin: dict[str, Any], candidates: list[dict] | None = None) -> OptimizerPlan:
+        from ..agents.optimizer import solve_optimizer
+
+        gap = (twin.get("current_plan") or {}).get("gap") or twin.get("gap") or {}
+        gap_n = float(gap.get("N") or 0)
+        gap_p = float(gap.get("P2O5") or 0)
+        gap_k = float(gap.get("K2O") or 0)
+
+        products = twin.get("products")
+        if not products:
+            raise ValueError(
+                "ScipyLinprogOptimizer requires twin['products'] from fertilizer_products. "
+                "Refusing to invent compositions."
+            )
+
+        res = solve_optimizer(gap_n, gap_p, gap_k, products)
+        plan_qty = {
+            k: float(v)
+            for k, v in res.plan_kg_ha.items()
+            if k.endswith("_kg_ha")
+        }
+        cost, currency, citation = estimate_cost(plan_qty, twin.get("region_id"))
+
+        return OptimizerPlan(
+            plan_kg_ha=res.plan_kg_ha,
+            total_kg_ha=res.total_kg_ha,
+            cost_estimate=cost,
+            cost_currency=currency,
+            cost_citation=citation,
+            optimizer_id=self.optimizer_id,
+            message=res.message,
+            constraint_violations=[],
+            meta={
+                "gap": {"N": gap_n, "P2O5": gap_p, "K2O": gap_k},
+                "status": res.status,
+                "weight_saving_kg_ha": res.weight_saving_kg_ha,
+                "flag": res.flag,
+            },
+        )
+
+
 def get_default_optimizer() -> HeuristicOptimizer:
+    return HeuristicOptimizer()
+
+
+def get_optimizer(name: str | None = None) -> Optimizer:
+    if name and name.lower() in ("linprog", "scipy", "scipy_linprog"):
+        return ScipyLinprogOptimizer()
     return HeuristicOptimizer()

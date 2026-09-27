@@ -1,20 +1,20 @@
 -- ============================================================
--- AgroTwin AI — PostgreSQL DDL (Phase-2, matches schema_sqlite.sql)
--- Apply with: psql -d agrotwin -f schema_postgres.sql
--- This is the Postgres-native DDL for production deployment.
--- Types mapped back from SQLite: TEXT→UUID/TIMESTAMPTZ/JSONB,
--- INTEGER PK → UUID DEFAULT gen_random_uuid(), NUMERIC stays NUMERIC.
+-- AgroTwin AI — PostgreSQL DDL (Production / NeonDB)
+--
+-- CRITICAL DRIFT GUARD:
+-- schema_sqlite.sql and schema_postgres.sql MUST be kept structurally identical.
+-- Integer primary keys (SERIAL) and integer foreign keys are used consistently
+-- across both engines to ensure full compatibility with the application layer.
+--
+-- Apply with: psql $DATABASE_URL -f schema_postgres.sql
 -- ============================================================
 
--- Requires: pgcrypto (for gen_random_uuid on PG < 13)
--- CREATE EXTENSION IF NOT EXISTS pgcrypto;
-
 -- ──────────────────────────────────────────────
--- Geography
+-- Geography / Admin hierarchy
 -- ──────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS regions (
-    region_id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    region_id       SERIAL PRIMARY KEY,
     region_code     TEXT UNIQUE NOT NULL,
     region_name     TEXT NOT NULL,
     country_code    TEXT DEFAULT 'IN',
@@ -22,8 +22,8 @@ CREATE TABLE IF NOT EXISTS regions (
 );
 
 CREATE TABLE IF NOT EXISTS districts (
-    district_id     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    region_id       UUID NOT NULL REFERENCES regions(region_id),
+    district_id     SERIAL PRIMARY KEY,
+    region_id       INTEGER NOT NULL REFERENCES regions(region_id),
     district_code   TEXT UNIQUE NOT NULL,
     district_name   TEXT NOT NULL,
     area_km2        NUMERIC,
@@ -36,8 +36,8 @@ CREATE TABLE IF NOT EXISTS districts (
 );
 
 CREATE TABLE IF NOT EXISTS talukas (
-    taluka_id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    district_id     UUID NOT NULL REFERENCES districts(district_id),
+    taluka_id       SERIAL PRIMARY KEY,
+    district_id     INTEGER NOT NULL REFERENCES districts(district_id),
     taluka_code     TEXT NOT NULL,
     taluka_name     TEXT NOT NULL,
     is_pilot        BOOLEAN DEFAULT FALSE,
@@ -49,8 +49,8 @@ CREATE TABLE IF NOT EXISTS talukas (
 -- ──────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS farmers (
-    farmer_id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    region_id       UUID NOT NULL REFERENCES regions(region_id),
+    farmer_id       SERIAL PRIMARY KEY,
+    region_id       INTEGER NOT NULL REFERENCES regions(region_id),
     full_name       TEXT,
     mobile          TEXT,
     preferred_lang  TEXT DEFAULT 'mr',
@@ -58,18 +58,17 @@ CREATE TABLE IF NOT EXISTS farmers (
 );
 
 CREATE TABLE IF NOT EXISTS fields (
-    field_id        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    region_id       UUID NOT NULL REFERENCES regions(region_id),
-    district_id     UUID NOT NULL REFERENCES districts(district_id),
-    taluka_id       UUID REFERENCES talukas(taluka_id),
-    farmer_id       UUID REFERENCES farmers(farmer_id),
+    field_id        SERIAL PRIMARY KEY,
+    region_id       INTEGER NOT NULL REFERENCES regions(region_id),
+    district_id     INTEGER NOT NULL REFERENCES districts(district_id),
+    taluka_id       INTEGER REFERENCES talukas(taluka_id),
+    farmer_id       INTEGER REFERENCES farmers(farmer_id),
     field_code      TEXT UNIQUE,
     area_ha         NUMERIC(8,2) NOT NULL,
     soil_type       TEXT,
     irrigation_type TEXT,
     lat             NUMERIC(10,6),
     lon             NUMERIC(10,6),
-    location        GEOGRAPHY(POINT, 4326),  -- requires PostGIS, optional for MVP
     is_synthetic    BOOLEAN DEFAULT FALSE,
     label_note      TEXT,
     created_at      TIMESTAMPTZ DEFAULT now(),
@@ -84,7 +83,7 @@ CREATE INDEX IF NOT EXISTS idx_fields_synthetic  ON fields(is_synthetic);
 -- ──────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS crops (
-    crop_id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    crop_id         SERIAL PRIMARY KEY,
     crop_code       TEXT UNIQUE NOT NULL,
     crop_name       TEXT NOT NULL,
     scientific_name TEXT,
@@ -92,9 +91,9 @@ CREATE TABLE IF NOT EXISTS crops (
 );
 
 CREATE TABLE IF NOT EXISTS crop_calendars (
-    calendar_id     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    crop_id         UUID NOT NULL REFERENCES crops(crop_id),
-    region_id       UUID REFERENCES regions(region_id),
+    calendar_id     SERIAL PRIMARY KEY,
+    crop_id         INTEGER NOT NULL REFERENCES crops(crop_id),
+    region_id       INTEGER REFERENCES regions(region_id),
     stage_name      TEXT NOT NULL,
     stage_order     INTEGER NOT NULL,
     days_after_planting_min INTEGER,
@@ -103,10 +102,11 @@ CREATE TABLE IF NOT EXISTS crop_calendars (
     source_file     TEXT DEFAULT '05_Crop_Calendars/four_pilot_crops.md'
 );
 
+-- Active crop season per field
 CREATE TABLE IF NOT EXISTS field_crops (
-    field_crop_id    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    field_id         UUID NOT NULL REFERENCES fields(field_id),
-    crop_id          UUID NOT NULL REFERENCES crops(crop_id),
+    field_crop_id    SERIAL PRIMARY KEY,
+    field_id         INTEGER NOT NULL REFERENCES fields(field_id),
+    crop_id          INTEGER NOT NULL REFERENCES crops(crop_id),
     variety          TEXT,
     sowing_date      DATE,
     current_stage    TEXT,
@@ -120,25 +120,51 @@ CREATE TABLE IF NOT EXISTS field_crops (
 CREATE INDEX IF NOT EXISTS idx_field_crops_field  ON field_crops(field_id);
 CREATE INDEX IF NOT EXISTS idx_field_crops_active ON field_crops(field_id, is_active);
 
+-- Convenience view matching SQLite view
+CREATE OR REPLACE VIEW field_active_crop AS
+SELECT
+    f.field_id,
+    f.field_code,
+    f.area_ha,
+    f.soil_type,
+    f.irrigation_type,
+    f.lat,
+    f.lon,
+    f.region_id,
+    f.district_id,
+    f.taluka_id,
+    f.farmer_id,
+    f.is_synthetic,
+    fc.field_crop_id,
+    fc.crop_id          AS current_crop_id,
+    fc.variety          AS current_variety,
+    fc.sowing_date,
+    fc.current_stage,
+    fc.recommendation_type,
+    fc.target_yield_kg_ha
+FROM fields f
+LEFT JOIN field_crops fc
+    ON fc.field_id = f.field_id AND fc.is_active = TRUE;
+
 -- ──────────────────────────────────────────────
 -- Fertilizers
 -- ──────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS fertilizer_products (
-    product_id      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    product_id      SERIAL PRIMARY KEY,
     product_code    TEXT UNIQUE NOT NULL,
     product_name    TEXT NOT NULL,
-    n_percent       NUMERIC(5,2) NOT NULL,
-    p2o5_percent    NUMERIC(5,2) NOT NULL,
-    k2o_percent     NUMERIC(5,2) NOT NULL,
+    n_percent       NUMERIC NOT NULL,
+    p2o5_percent    NUMERIC NOT NULL,
+    k2o_percent     NUMERIC NOT NULL,
     notes           TEXT,
     source_file     TEXT DEFAULT '07_Fertilizer_Composition/npk_composition.csv'
 );
 
 CREATE TABLE IF NOT EXISTS fertilizer_recommendations (
-    rec_id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    crop_id         UUID NOT NULL REFERENCES crops(crop_id),
-    region_id       UUID REFERENCES regions(region_id),
+    rec_id          SERIAL PRIMARY KEY,
+    crop_id         INTEGER NOT NULL REFERENCES crops(crop_id),
+    region_id       INTEGER REFERENCES regions(region_id),
     recommendation_type TEXT NOT NULL,
     n_kg_ha         NUMERIC,
     p2o5_kg_ha      NUMERIC,
@@ -160,8 +186,8 @@ CREATE TABLE IF NOT EXISTS fertilizer_recommendations (
 -- ──────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS soil_tests (
-    soil_test_id    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    field_id        UUID NOT NULL REFERENCES fields(field_id),
+    soil_test_id    SERIAL PRIMARY KEY,
+    field_id        INTEGER NOT NULL REFERENCES fields(field_id),
     test_date       DATE NOT NULL,
     n_kg_ha         NUMERIC,
     p_kg_ha         NUMERIC,
@@ -184,9 +210,9 @@ CREATE TABLE IF NOT EXISTS soil_tests (
 CREATE INDEX IF NOT EXISTS idx_soil_tests_field ON soil_tests(field_id, test_date DESC);
 
 CREATE TABLE IF NOT EXISTS applications (
-    application_id  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    field_id        UUID NOT NULL REFERENCES fields(field_id),
-    product_id      UUID REFERENCES fertilizer_products(product_id),
+    application_id  SERIAL PRIMARY KEY,
+    field_id        INTEGER NOT NULL REFERENCES fields(field_id),
+    product_id      INTEGER REFERENCES fertilizer_products(product_id),
     application_date DATE,
     quantity_kg     NUMERIC,
     quantity_kg_ha  NUMERIC,
@@ -198,15 +224,17 @@ CREATE TABLE IF NOT EXISTS applications (
     CHECK (quantity_kg_ha IS NULL OR quantity_kg_ha >= 0)
 );
 
+CREATE INDEX IF NOT EXISTS idx_applications_field ON applications(field_id, application_date DESC);
+
 -- ──────────────────────────────────────────────
--- Ledger & Recommendations
+-- Nutrient Ledger & Recommendations
 -- ──────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS nutrient_ledger_entries (
-    ledger_id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    field_id        UUID NOT NULL REFERENCES fields(field_id),
+    ledger_id       SERIAL PRIMARY KEY,
+    field_id        INTEGER NOT NULL REFERENCES fields(field_id),
     entry_date      DATE NOT NULL DEFAULT CURRENT_DATE,
-    crop_id         UUID REFERENCES crops(crop_id),
+    crop_id         INTEGER REFERENCES crops(crop_id),
     current_stage   TEXT,
     required_n_kg_ha    NUMERIC,
     required_p2o5_kg_ha NUMERIC,
@@ -226,7 +254,7 @@ CREATE TABLE IF NOT EXISTS nutrient_ledger_entries (
     gap_k2o_kg_ha       NUMERIC,
     calculation_notes   TEXT,
     flags               JSONB,
-    confidence          TEXT CHECK (confidence IN ('HIGH','MEDIUM','LOW','ABSTAIN', NULL)),
+    confidence          TEXT,
     is_synthetic        BOOLEAN DEFAULT FALSE,
     created_at          TIMESTAMPTZ DEFAULT now()
 );
@@ -234,32 +262,32 @@ CREATE TABLE IF NOT EXISTS nutrient_ledger_entries (
 CREATE INDEX IF NOT EXISTS idx_ledger_field ON nutrient_ledger_entries(field_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS recommendations (
-    recommendation_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    field_id        UUID NOT NULL REFERENCES fields(field_id),
-    ledger_id       UUID REFERENCES nutrient_ledger_entries(ledger_id),
+    recommendation_id SERIAL PRIMARY KEY,
+    field_id        INTEGER NOT NULL REFERENCES fields(field_id),
+    ledger_id       INTEGER REFERENCES nutrient_ledger_entries(ledger_id),
     generated_at    TIMESTAMPTZ DEFAULT now(),
     plan_json       JSONB NOT NULL,
     total_cost_estimate NUMERIC,
-    confidence      TEXT CHECK (confidence IN ('HIGH','MEDIUM','LOW','ABSTAIN', NULL)),
+    confidence      TEXT,
     confidence_reason TEXT,
     evidence_citations JSONB,
     flags           JSONB,
     is_synthetic    BOOLEAN DEFAULT FALSE,
-    status          TEXT NOT NULL DEFAULT 'PROPOSED'
-                    CHECK (status IN ('PROPOSED','ABSTAINED','NO_FERTILIZER_NEEDED','SUPERSEDED')),
+    status          TEXT DEFAULT 'PROPOSED',
     invalidated_at  TIMESTAMPTZ,
-    superseded_by   UUID REFERENCES recommendations(recommendation_id)
+    superseded_by   INTEGER REFERENCES recommendations(recommendation_id),
+    CHECK (status IN ('PROPOSED','ABSTAINED','NO_FERTILIZER_NEEDED','SUPERSEDED','PLAN_GENERATED','PLAN_REVISED'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_recs_field_latest ON recommendations(field_id, generated_at DESC);
 
 -- ──────────────────────────────────────────────
--- Weather
+-- Weather Snapshots
 -- ──────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS weather_snapshots (
-    snapshot_id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    field_id            UUID NOT NULL REFERENCES fields(field_id),
+    snapshot_id         SERIAL PRIMARY KEY,
+    field_id            INTEGER NOT NULL REFERENCES fields(field_id),
     fetched_at          TIMESTAMPTZ NOT NULL,
     forecast_json       JSONB,
     rainfall_probability NUMERIC,
@@ -272,13 +300,13 @@ CREATE TABLE IF NOT EXISTS weather_snapshots (
 CREATE INDEX IF NOT EXISTS idx_weather_field ON weather_snapshots(field_id, fetched_at DESC);
 
 -- ──────────────────────────────────────────────
--- Events & Alerts
+-- Events & Monitoring
 -- ──────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS events (
-    event_id        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    event_id        SERIAL PRIMARY KEY,
     event_type      TEXT NOT NULL,
-    field_id        UUID REFERENCES fields(field_id),
+    field_id        INTEGER REFERENCES fields(field_id),
     payload         JSONB,
     actor           TEXT DEFAULT 'system',
     created_at      TIMESTAMPTZ DEFAULT now()
@@ -287,15 +315,20 @@ CREATE TABLE IF NOT EXISTS events (
 CREATE INDEX IF NOT EXISTS idx_events_field ON events(field_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_events_type  ON events(event_type, created_at DESC);
 
+-- ──────────────────────────────────────────────
+-- Alerts
+-- ──────────────────────────────────────────────
+
 CREATE TABLE IF NOT EXISTS alerts (
-    alert_id        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    field_id        UUID REFERENCES fields(field_id),
+    alert_id        SERIAL PRIMARY KEY,
+    field_id        INTEGER REFERENCES fields(field_id),
     alert_type      TEXT NOT NULL,
-    severity        TEXT CHECK (severity IN ('HIGH','MEDIUM','LOW', NULL)),
+    severity        TEXT,
     message         TEXT,
     triggered_at    TIMESTAMPTZ DEFAULT now(),
     resolved_at     TIMESTAMPTZ,
-    related_recommendation_id UUID REFERENCES recommendations(recommendation_id)
+    related_recommendation_id INTEGER REFERENCES recommendations(recommendation_id),
+    CHECK (severity IN ('HIGH','MEDIUM','LOW',NULL))
 );
 
 -- ──────────────────────────────────────────────
@@ -303,12 +336,30 @@ CREATE TABLE IF NOT EXISTS alerts (
 -- ──────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS audit_log (
-    audit_id        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    audit_id        SERIAL PRIMARY KEY,
     entity_type     TEXT NOT NULL,
-    entity_id       UUID,
+    entity_id       INTEGER,
     action          TEXT NOT NULL,
     actor           TEXT DEFAULT 'system',
     old_value       JSONB,
     new_value       JSONB,
     created_at      TIMESTAMPTZ DEFAULT now()
 );
+
+-- ──────────────────────────────────────────────
+-- Soil Report OCR Uploads
+-- ──────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS soil_report_uploads (
+    upload_id           SERIAL PRIMARY KEY,
+    field_id            INTEGER NOT NULL REFERENCES fields(field_id),
+    original_file_path  TEXT,
+    extracted_json      JSONB NOT NULL,
+    status              TEXT NOT NULL DEFAULT 'PENDING_CONFIRMATION',
+    created_at          TIMESTAMPTZ DEFAULT now(),
+    confirmed_at        TIMESTAMPTZ,
+    soil_test_id        INTEGER REFERENCES soil_tests(soil_test_id),
+    CHECK (status IN ('PENDING_CONFIRMATION','CONFIRMED','REJECTED','OCR_FAILED'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_soil_uploads_field ON soil_report_uploads(field_id, created_at DESC);
