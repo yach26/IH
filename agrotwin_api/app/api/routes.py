@@ -72,6 +72,129 @@ def get_conn():
         conn.close()
 
 
+# ─── Demo Auth (lightweight, no external IdP) ───────────────────────────────
+import hashlib
+import hmac
+import secrets
+import time
+
+_AUTH_SECRET = os.environ.get("AGROTWIN_AUTH_SECRET", "dev-secret-change-in-production")
+_TOKEN_STORE: dict[str, dict] = {}  # token -> { email, role, name, exp }
+
+_DEMO_USERS = {
+    "admin@agrotwin.demo": {
+        "password": "admin123",
+        "role": "admin",
+        "name": "Admin User",
+    },
+    "farmer@agrotwin.demo": {
+        "password": "farmer123",
+        "role": "farmer",
+        "name": "Demo Farmer",
+    },
+    "agronomist@agrotwin.demo": {
+        "password": "agro123",
+        "role": "agronomist",
+        "name": "Agronomist User",
+    },
+}
+
+
+def _sign_token(email: str, role: str, name: str) -> str:
+    payload = f"{email}:{role}:{name}:{int(time.time())}"
+    sig = hmac.new(_AUTH_SECRET.encode(), payload.encode(), hashlib.sha256).hexdigest()[:16]
+    return f"{payload}:{sig}"
+
+
+def _verify_token(token: str) -> dict | None:
+    if token in _TOKEN_STORE:
+        entry = _TOKEN_STORE[token]
+        if entry["exp"] > time.time():
+            return entry
+        del _TOKEN_STORE[token]
+    try:
+        parts = token.split(":")
+        if len(parts) != 5:
+            return None
+        email, role, name, ts, sig = parts
+        expected = hmac.new(_AUTH_SECRET.encode(), f"{email}:{role}:{name}:{ts}".encode(), hashlib.sha256).hexdigest()[:16]
+        if not secrets.compare_digest(sig, expected):
+            return None
+        if int(ts) + 86400 < time.time():
+            return None
+        return {"email": email, "role": role, "name": name, "exp": int(ts) + 86400}
+    except Exception:
+        return None
+
+
+@router.post("/auth/login")
+def login(body: dict):
+    """Demo login — returns a token for the given email/password."""
+    email = body.get("email", "").lower().strip()
+    password = body.get("password", "")
+    user = _DEMO_USERS.get(email)
+    if not user or user["password"] != password:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    token = _sign_token(email, user["role"], user["name"])
+    _TOKEN_STORE[token] = {
+        "email": email,
+        "role": user["role"],
+        "name": user["name"],
+        "exp": time.time() + 86400,
+    }
+    return {
+        "token": token,
+        "user": {"email": email, "role": user["role"], "name": user["name"]},
+    }
+
+
+@router.get("/auth/me")
+def me(authorization: str = ""):
+    """Get current user from Bearer token."""
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid authorization")
+    token = authorization[7:]
+    user = _verify_token(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    return {"email": user["email"], "role": user["role"], "name": user["name"]}
+
+
+@router.get("/fields")
+def list_fields(conn: sqlite3.Connection = Depends(get_conn)):
+    """List all fields with their active crop info."""
+    rows = conn.execute(
+        """SELECT f.field_id, f.field_code, f.area_ha, f.irrigation_type,
+                  f.lat, f.lon, f.is_synthetic,
+                  c.crop_code, c.crop_name, fc.current_stage, fc.sowing_date
+           FROM fields f
+           LEFT JOIN field_crops fc ON f.field_id = fc.field_id AND fc.is_active = 1
+           LEFT JOIN crops c ON fc.crop_id = c.crop_id
+           ORDER BY f.field_code"""
+    ).fetchall()
+    return {
+        "fields": [
+            {
+                "id": r["field_id"],
+                "field_id": r["field_id"],
+                "code": r["field_code"],
+                "name": r["field_code"],
+                "area_ha": r["area_ha"],
+                "irrigation_type": r["irrigation_type"],
+                "lat": r["lat"],
+                "lon": r["lon"],
+                "is_synthetic": bool(r["is_synthetic"]),
+                "crop": r["crop_code"],
+                "crop_name": r["crop_name"],
+                "current_stage": r["current_stage"],
+                "sowing_date": r["sowing_date"],
+                "location": f"{r['lat']}, {r['lon']}" if r["lat"] and r["lon"] else None,
+            }
+            for r in rows
+        ]
+    }
+
+
 def _field_row(conn: sqlite3.Connection, field_ref: str) -> sqlite3.Row:
     base_query = """
         SELECT fac.*, c.crop_name, c.crop_code as crop_code_str
