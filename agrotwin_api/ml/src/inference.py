@@ -27,7 +27,8 @@ METADATA_PATH = os.path.join(HERE, "..", "models", "model_metadata.json")
 
 _MODELS = None
 _METADATA = None
-_PER_CROP_FEATURES = [c for c in FEATURE_COLUMNS if not c.startswith("crop__")]
+# v2 models are trained with all features including crop one-hot
+_PER_CROP_FEATURES = FEATURE_COLUMNS
 
 
 def _load():
