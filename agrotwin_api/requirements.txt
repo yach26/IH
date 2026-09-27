@@ -31,3 +31,6 @@ psycopg[binary]>=3.1.18
 easyocr>=1.7.0
 pypdf>=5.0.0
 Pillow>=10.0.0
+
+# Grok API (xAI via OpenAI SDK)
+openai>=1.0.0

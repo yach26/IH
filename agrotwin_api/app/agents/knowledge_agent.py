@@ -44,6 +44,7 @@ class EvidencePack:
     applicability_notes: str
     confidence: str  # "HIGH" | "MEDIUM" | "LOW" | "NO_EVIDENCE"
     flags: list[str] = field(default_factory=list)
+    summary: str = ""
 
     def to_dict(self) -> dict:
         return {
@@ -60,6 +61,7 @@ class EvidencePack:
             "applicability_notes": self.applicability_notes,
             "confidence": self.confidence,
             "flags": self.flags,
+            "summary": self.summary,
         }
 
     def is_empty(self) -> bool:
@@ -188,10 +190,28 @@ def retrieve_evidence_pack(
         )
 
     confidence = "HIGH" if len(chunks) >= 3 else ("MEDIUM" if len(chunks) >= 1 else "NO_EVIDENCE")
+    
+    summary = ""
+    if chunks:
+        try:
+            from ..core.llm import generate_chat_completion
+            prompt = f"Synthesize a brief, factual summary of the following agricultural guidelines regarding the query: '{query}'.\n\n"
+            for i, c in enumerate(chunks):
+                prompt += f"Excerpt {i+1} (from {c.citation}):\n{c.text}\n\n"
+            
+            messages = [
+                {"role": "system", "content": "You are an agricultural expert. Summarize the provided excerpts strictly based on facts without adding external information."},
+                {"role": "user", "content": prompt}
+            ]
+            summary = generate_chat_completion(messages)
+        except Exception as e:
+            summary = f"Summary generation failed: {str(e)}"
+            
     return EvidencePack(
         query=query,
         chunks=chunks,
         applicability_notes="Evidence retrieved from curated MPKV/ICAR and FCO specifications.",
         confidence=confidence,
         flags=[] if confidence != "NO_EVIDENCE" else ["NO_EVIDENCE"],
+        summary=summary,
     )

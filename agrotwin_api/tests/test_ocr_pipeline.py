@@ -92,7 +92,7 @@ def test_real_easyocr_image_extraction(sample_report_image_bytes):
     """Verifies that EasyOCR processes real image pixels and extracts nutrients."""
     res = run_ocr_pipeline(sample_report_image_bytes, "soil_test.png")
     assert res["status"] == "extracted"
-    assert res["engine"] == "easyocr"
+    assert res["engine"].startswith("easyocr")
     data = res["extracted_data"]
     # Check that actual numbers were recognized from the image
     assert data["n_kg_ha"]["value"] is not None

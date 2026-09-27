@@ -433,6 +433,45 @@ def run_ocr_pipeline(data: bytes, filename: str) -> dict[str, Any]:
         if v.get("confidence", 0) < 0.85 or v.get("value") is None
     ]
 
+    if needs_review:
+        try:
+            from .llm import generate_chat_completion
+            import json
+            missing = ", ".join(needs_review)
+            prompt = f"Extract the following missing soil health fields from the raw text: {missing}.\n\nRaw Text:\n{parsed['raw_text']}\n\nReturn JSON with the missing keys and their numeric values, or null if not found. Only return the JSON object."
+            messages = [
+                {"role": "system", "content": "You are a data extractor. Output ONLY valid JSON containing the requested keys and their numeric values. No markdown wrapping."},
+                {"role": "user", "content": prompt}
+            ]
+            llm_resp = generate_chat_completion(messages)
+            try:
+                clean_json = llm_resp.strip()
+                if clean_json.startswith("```json"):
+                    clean_json = clean_json[7:-3].strip()
+                elif clean_json.startswith("```"):
+                    clean_json = clean_json[3:-3].strip()
+                    
+                refined = json.loads(clean_json)
+                for field in needs_review:
+                    if field in refined and refined[field] is not None:
+                        try:
+                            val = float(refined[field])
+                            fields[field]["value"] = val
+                            fields[field]["confidence"] = 0.90
+                            if "_llm_refined" not in engine:
+                                engine += "_llm_refined"
+                        except (ValueError, TypeError):
+                            pass
+            except json.JSONDecodeError:
+                pass
+        except ImportError:
+            pass
+
+    needs_review = [
+        f for f, v in fields.items()
+        if v.get("confidence", 0) < 0.85 or v.get("value") is None
+    ]
+
     return {
         "status": "extracted" if blocks else "no_text_detected",
         "engine": engine,
