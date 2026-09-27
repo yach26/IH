@@ -315,6 +315,8 @@ def confirm_soil_report(
     """
     row = _field_row(conn, field_id)
     if body.upload_id:
+        # This singleton may hold a connection closed by an earlier request.
+        get_monitoring_agent().bind(conn)
         confirmed = {
             "n_kg_ha": body.soil_test.n_kg_ha,
             "p_kg_ha": body.soil_test.p_kg_ha,

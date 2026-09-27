@@ -22,7 +22,7 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 from app.main import app
-from app.db import get_db_connection
+from app.api.routes import get_conn
 from tests.conftest import make_test_db
 
 
@@ -37,15 +37,15 @@ def override_get_db():
     yield _test_conn
 
 
-app.dependency_overrides[get_db_connection] = override_get_db
-
-
 @pytest.fixture(autouse=True)
 def _fresh_db():
     """Recreate a clean in-memory DB before each test in this module."""
     global _test_conn, _test_ids
     _test_conn, _test_ids = make_test_db()
+    # Other API test modules clear this shared app mapping; reapply it per test.
+    app.dependency_overrides[get_conn] = override_get_db
     yield
+    app.dependency_overrides.pop(get_conn, None)
     _test_conn.close()
 
 
