@@ -169,9 +169,17 @@ export default function SimulatorPage() {
   const [realCitation, setRealCitation] = useState<string>('');
   const [realFieldInfo, setRealFieldInfo] = useState<{ crop: string; stage: string; } | null>(null);
 
-  // Fetch the real baseline from backend twin API on mount
+  const CROP_TO_FIELD: Record<string, string> = {
+    sugarcane: 'REAL-001',
+    banana: 'REAL-002',
+    cotton: 'REAL-003',
+    rice: 'REAL-004'
+  };
+  const activeFieldId = CROP_TO_FIELD[activeCropId] || 'REAL-001';
+
+  // Fetch the real baseline from backend twin API whenever active field changes
   useEffect(() => {
-    fetch('http://localhost:8000/fields/REAL-001/twin')
+    fetch(`http://localhost:8000/fields/${activeFieldId}/twin`)
       .then(r => r.json())
       .then(data => {
         // Use the gap N as the required target to apply
@@ -179,17 +187,14 @@ export default function SimulatorPage() {
         if (gap?.N) {
           // Real recommended N gap to fill — this is the meaningful "baseline" for this field
           setRealBaseline(Math.round(gap.N));
+        } else {
+          setRealBaseline(CROPS[activeCropId]?.baselineFertilizer || null);
         }
         setRealCitation(data.currentPlan?.citation || '');
         setRealFieldInfo({ crop: data.crop, stage: data.growthStage });
-        // Auto-switch crop selector to the real crop
-        const cropLower = (data.crop || '').toLowerCase();
-        if (cropLower.includes('sugarcane')) setActiveCropId('sugarcane');
-        else if (cropLower.includes('rice')) setActiveCropId('rice');
-        else if (cropLower.includes('soybean')) setActiveCropId('soybean');
       })
       .catch(() => null);
-  }, []);
+  }, [activeFieldId, activeCropId]);
 
   // Inputs
   const crop = CROPS[activeCropId];
@@ -222,7 +227,7 @@ export default function SimulatorPage() {
       const baseline = effectiveBaseline;
       const deltaPct = ((nKgHa - baseline) / baseline) * 100;
       
-      fetch('http://localhost:8000/fields/REAL-001/what-if', {
+      fetch(`http://localhost:8000/fields/${activeFieldId}/what-if`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

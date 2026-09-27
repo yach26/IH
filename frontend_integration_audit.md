@@ -85,3 +85,11 @@ All data flows from `GET /fields/REAL-001/twin` which is enriched server-side:
 2. **`components/landing/HeroSection.tsx`** — Now fetches twin data on mount; shows real field ID, crop, stage, soil health score, and rainfall forecast.
 3. **`components/ui/PilotRegionsMap.tsx`** — Fetches all `GET /fields` and plots all 8 real Kolhapur fields.
 4. **`app/simulator/page.tsx`** — Fetches twin data on mount; auto-selects crop; pre-sets N slider to real soil gap; shows citation and live field badge in header.
+
+## Phase 4: Field Switching & Dynamic Maps (`/dashboard`, `/simulator`)
+
+### ✅ Dynamic Updates
+* **Dashboard Field Switcher:** Added a sticky `FieldSelectorBar` that fetches all fields from `/fields` and allows switching between them dynamically.
+* **Database Updates:** Seeded `REAL-002` as Banana, `REAL-003` as Cotton, and `REAL-004` as Rice. Now, switching fields on the dashboard completely updates the crop context, soil test data, weather, and recommendations.
+* **Map Modal:** Both the "View on Map" button in the hero banner and the "Expand" button on the field location card now open an interactive fullscreen Leaflet map overlaid with all field locations.
+* **Simulator Crop Switching:** Clicking a crop on the simulator (Rice, Banana, Cotton, Sugarcane) now dynamically remaps to the actual `fieldId` (`REAL-001` through `REAL-004`) and performs backend `what-if` inference for that specific field instead of hardcoding all simulator requests to `REAL-001`.
