@@ -146,12 +146,17 @@ def retrieve_evidence(
         text = c.get("text", "")
         excerpt = text[:300] + "..." if len(text) > 300 else text
         citation = c.get("citation") or (c.get("metadata", {}).get("source") or "mpkv_icar_rdf.md")
+        meta = dict(c.get("metadata", {}))
+        score = round(float(c.get("score", 0.0)), 3)
+        meta["score"] = score
         results.append({
             "source_file": citation,
             "excerpt": excerpt,
-            "score": round(float(c.get("score", 0.0)), 3),
+            "content": excerpt,
+            "confidence": "HIGH" if score > 0 else "MEDIUM",
+            "score": score,
             "citation": citation,
-            "metadata": c.get("metadata", {}),
+            "metadata": meta,
         })
 
     return results
