@@ -73,8 +73,8 @@ The model was trained on **synthetic data** generated to match published distric
 
 ## Limitations & Risks
 
-### 1. Synthetic Training Data (with Real Data Calibration)
-The model was originally trained on synthetic data calibrated to published district/state yield averages. We now have real Kolhapur soil test distributions (from Polgaon village, 2016-2024) and official Soil Health Card dashboard data (2023-24, 2024-25, 2025-26 cycles). The model is being calibrated against these real distributions, but **real paired (soil + fertilizer + yield) farm records are still limited**. The model has not been fully retrained on real yield data.
+### 1. Synthetic Training Data (NOT retrained on real data)
+The model was trained on synthetic data calibrated to published district/state yield averages. We now have real Kolhapur soil test distributions (from Polgaon village, 2016-2024) and official Soil Health Card dashboard data (2023-24, 2024-25, 2025-26 cycles). **The model has NOT been retrained on real data.** Real paired (soil + fertilizer + yield) farm records are still limited. The model's predictions should be treated as directional estimates only.
 
 ### 2. Extrapolation Risk
 If a fertilizer plan applies nutrients at rates outside 40–130% of the Recommended Dose of Fertilizer (RDF), the model's prediction is an **extrapolation** beyond its training range. The API response includes an `extrapolation` boolean flag and a caveat when this occurs.
