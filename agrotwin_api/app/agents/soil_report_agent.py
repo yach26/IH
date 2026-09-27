@@ -78,89 +78,36 @@ def extract_from_text(text: str) -> dict[str, dict[str, Any]]:
 
 def extract_from_bytes(filename: str, data: bytes) -> tuple[dict[str, dict[str, Any]], str]:
     """
-    Decode text files directly. For images/PDF try optional OCR engines,
-    then fall back to utf-8 decode (useful for fixture .txt reports).
+    Extract structured soil nutrients using the unified real OCR engine.
+    Supports images (EasyOCR + OpenCV), PDFs (pypdf digital + scanned), and plain text.
     Returns (extracted, engine_name).
     """
-    name = (filename or "").lower()
-    if name.endswith((".txt", ".md", ".csv")) or not name:
+    try:
+        from ..core.ocr import run_ocr_pipeline
+
+        res = run_ocr_pipeline(data, filename)
+        # Ensure format compatibility: {field: {"value": ..., "confidence": ...}}
+        extracted: dict[str, dict[str, Any]] = {}
+        for k, v in res.get("extracted_data", {}).items():
+            extracted[k] = {
+                "value": v.get("value"),
+                "confidence": v.get("confidence", 0.0),
+            }
+        engine = res.get("engine", "easyocr")
+        if all(v["value"] is None for v in extracted.values()):
+            for k in extracted:
+                extracted[k]["confidence"] = 0.0
+            return extracted, "ocr_failed"
+        return extracted, engine
+    except Exception:
+        # Last resort fallback: treat as text so tests/fixtures work
         text = data.decode("utf-8", errors="replace")
-        return extract_from_text(text), "regex_text"
-
-    ocr_text, engine = _try_ocr(data, name)
-    if ocr_text:
-        return extract_from_text(ocr_text), engine
-
-    # Last resort: treat as text so tests/manual paste still work
-    text = data.decode("utf-8", errors="replace")
-    extracted = extract_from_text(text)
-    if all(v["value"] is None for v in extracted.values()):
-        for k in extracted:
-            extracted[k]["confidence"] = 0.0
-        return extracted, "ocr_failed"
-    return extracted, "regex_fallback"
-
-
-def _extract_text_from_pdf(data: bytes) -> str:
-    """Extract readable text from a PDF byte array without requiring external binaries."""
-    try:
-        import pypdf
-        import io
-        reader = pypdf.PdfReader(io.BytesIO(data))
-        text = "\n".join(page.extract_text() or "" for page in reader.pages)
-        if text.strip():
-            return text
-    except Exception:
-        pass
-    try:
-        import zlib
-        found_texts = []
-        for stream in re.findall(b"stream[\r\n]+(.*?)[\r\n]+endstream", data, re.DOTALL):
-            try:
-                decomp = zlib.decompress(stream)
-            except Exception:
-                decomp = stream
-            for m in re.finditer(rb"\(([^\(\)]+)\)", decomp):
-                try:
-                    found_texts.append(m.group(1).decode("latin-1"))
-                except Exception:
-                    pass
-        if found_texts:
-            return " ".join(found_texts)
-    except Exception:
-        pass
-    return ""
-
-
-def _try_ocr(data: bytes, name: str) -> tuple[str | None, str]:
-    """Optional PDF text extractor and EasyOCR."""
-    if name.endswith(".pdf"):
-        pdf_text = _extract_text_from_pdf(data)
-        if pdf_text and len(pdf_text.strip()) > 5:
-            return pdf_text, "pdf_text_extractor"
-    try:
-        import easyocr  # type: ignore
-        import tempfile
-
-        ext = os.path.splitext(name)[1] or ".png"
-        with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
-            tmp.write(data)
-            tmp_path = tmp.name
-        try:
-            reader = easyocr.Reader(["en"], gpu=False)
-            results = reader.readtext(tmp_path, detail=0)
-            ocr_text = "\n".join(results)
-            if ocr_text.strip():
-                return ocr_text, "easyocr"
-        finally:
-            if os.path.exists(tmp_path):
-                try:
-                    os.remove(tmp_path)
-                except Exception:
-                    pass
-    except Exception:
-        pass
-    return None, "no_ocr_engine"
+        extracted = extract_from_text(text)
+        if all(v["value"] is None for v in extracted.values()):
+            for k in extracted:
+                extracted[k]["confidence"] = 0.0
+            return extracted, "ocr_failed"
+        return extracted, "regex_fallback"
 
 
 def needs_review(extracted: dict[str, dict[str, Any]]) -> list[str]:

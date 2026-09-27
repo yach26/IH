@@ -23,9 +23,40 @@ from .schemas import (
     WhatIfRequest,
     OverrideRequest,
 )
-from ..core.ocr import save_upload_file, run_ocr_on_file
+from ..core.ocr import save_upload_file, run_ocr_on_file, run_ocr_pipeline, get_ocr_reader
 
 router = APIRouter()
+
+
+@router.get("/ocr/health")
+def ocr_health():
+    """Check status and readiness of the EasyOCR machine learning engine."""
+    import torch
+    reader = get_ocr_reader()
+    return {
+        "status": "ready" if reader is not None else "degraded",
+        "engine": "EasyOCR (PyTorch)",
+        "cuda_available": torch.cuda.is_available(),
+        "device": "cuda" if torch.cuda.is_available() else "cpu",
+        "supported_extensions": [".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff", ".pdf", ".txt", ".csv"],
+        "version": "1.7.2",
+    }
+
+
+@router.post("/ocr/extract")
+@router.post("/api/ocr/extract")
+async def extract_ocr_standalone(
+    file: UploadFile = File(...),
+):
+    """
+    Direct, standalone Real OCR API.
+    Upload any soil test report (image / scanned PDF / digital PDF / text) to receive
+    actual extracted nutrient values, confidence scores, and raw detected blocks.
+    No prior field registration required.
+    """
+    contents = await file.read()
+    filename = file.filename or "report.png"
+    return run_ocr_pipeline(contents, filename)
 
 
 from ..db import get_db_connection, _json_load

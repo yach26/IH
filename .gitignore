@@ -8,3 +8,5 @@ htmlcov/
 .env
 venv/
 .venv/
+uploads/
+agrotwin_api/uploads/
