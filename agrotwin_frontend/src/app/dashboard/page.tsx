@@ -1,105 +1,25 @@
 "use client";
 
-import React from 'react';
+import React, { Suspense } from 'react';
 import dynamic from 'next/dynamic';
+import Link from 'next/link';
+import { getTwin, ApiError, type TwinResponse } from '@/lib/api';
+import { useFieldParam } from '@/lib/useFieldParam';
+import FieldSelector from '@/components/ui/FieldSelector';
+import StageTimeline from '@/components/ui/StageTimeline';
 
 const FieldMap = dynamic(() => import('@/components/ui/FieldMap'), { ssr: false });
-import Link from 'next/link';
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-type NutrientEntry = { value: number; score: number; label: string; color: string };
-type FieldState = {
-  id: string;
-  status: string;
-  location: string;
-  crop: string;
-  stage: string;
-  stageSequence: string[];
-  area: string;
-  soilType: string;
-  lat: number;
-  lon: number;
-  soilHealthScore: number;
-  weather: { temp: number; condition: string; humidity: number; wind: number; rain24h: number; rainfall7d: number };
-  soil: {
-    n: NutrientEntry;
-    p: NutrientEntry;
-    k: NutrientEntry;
-    ph: number | null;
-    oc: number | null;
-    note: string;
-  };
-  fieldStatus: {
-    cropCondition: { label: string; color: string };
-    waterStress: { label: string; color: string };
-    pestRisk: { label: string; color: string };
-    diseaseRisk: { label: string; color: string };
-    overall: string;
-  };
-  recommendation: {
-    action: string;
-    window: string;
-    description: string;
-    quantity: string;
-    applicationWindow: string;
-    expectedBenefit: string;
-    estimatedCost: number;
-    confidence: string;
-    citation: string;
-  };
-  timeline: { name: string; done: boolean; current?: boolean }[];
-  insights: { title: string; time: string; desc: string; img: string }[];
-};
-
-// ─── Default / Skeleton State ─────────────────────────────────────────────────
-const defaultField: FieldState = {
-  id: '…',
-  status: 'Active',
-  location: 'Kolhapur, Maharashtra',
-  crop: 'Loading…',
-  stage: 'Loading…',
-  stageSequence: ["Land Prep", "Germination", "Tillering", "Grand Growth", "Ripening", "Harvest"],
-  area: '— ha',
-  soilType: '—',
-  lat: 16.0644,
-  lon: 74.1352,
-  soilHealthScore: 0,
-  weather: { temp: 28, condition: 'Loading…', humidity: 75, wind: 10, rain24h: 0, rainfall7d: 0 },
-  soil: {
-    n: { value: 0, score: 0, label: '…', color: 'bg-blue-500' },
-    p: { value: 0, score: 0, label: '…', color: 'bg-purple-500' },
-    k: { value: 0, score: 0, label: '…', color: 'bg-amber-500' },
-    ph: null,
-    oc: null,
-    note: 'Loading soil analysis…',
-  },
-  fieldStatus: {
-    cropCondition: { label: '…', color: 'text-gray-400' },
-    waterStress: { label: '…', color: 'text-gray-400' },
-    pestRisk: { label: '…', color: 'text-gray-400' },
-    diseaseRisk: { label: '…', color: 'text-gray-400' },
-    overall: 'Loading…',
-  },
-  recommendation: {
-    action: 'Loading recommendation…',
-    window: '…',
-    description: 'Fetching AI recommendation from pipeline…',
-    quantity: '—',
-    applicationWindow: '—',
-    expectedBenefit: '—',
-    estimatedCost: 0,
-    confidence: '—',
-    citation: '',
-  },
-  timeline: [],
-  insights: [
-    { title: 'Rainfall forecast updated', time: '2 hours ago', desc: 'Next 7-day forecast available.', img: '/image copy 2.png' },
-    { title: 'Soil analysis loaded', time: 'Today', desc: 'Real Polgaon SHC data ingested.', img: '/image copy 3.png' },
-    { title: 'Recommendation ready', time: 'Today', desc: 'AI pipeline has generated your plan.', img: '/image copy 4.png' },
-  ],
-};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+function confidenceBadgeClass(confidence: string): string {
+  const level = confidence.toUpperCase();
+  if (level === 'HIGH') return 'bg-green-50 text-green-700 border-green-200';
+  if (level === 'MEDIUM') return 'bg-amber-50 text-amber-700 border-amber-200';
+  if (level === 'LOW') return 'bg-orange-50 text-orange-700 border-orange-200';
+  if (level === 'ABSTAIN') return 'bg-red-50 text-red-700 border-red-200';
+  return 'bg-blue-50 text-blue-600 border-blue-200';
+}
+
 function nutrientLabel(score: number): string {
   if (score >= 80) return 'High';
   if (score >= 45) return 'Moderate';
@@ -116,119 +36,262 @@ function StatusDot({ color }: { color: string }) {
   return <span className={`inline-block w-2 h-2 rounded-full ${map[color] || 'bg-gray-400'}`} />;
 }
 
+// ─── Types ────────────────────────────────────────────────────────────────────
+type NutrientEntry = { value: number; score: number; label: string; color: string };
+type FieldState = {
+  id: string;
+  status: string;
+  location: string;
+  crop: string;
+  stage: string;
+  stageSequence: string[];
+  area: string;
+  soilType: string | null;
+  lat: number;
+  lon: number;
+  hasSoilTest: boolean;
+  soilHealthScore: number;
+  weather: { rainfall7d: number; heavy_rain_alert: boolean; condition: string };
+  soil: {
+    n: NutrientEntry;
+    p: NutrientEntry;
+    k: NutrientEntry;
+    ph: number | null;
+    oc: number | null;
+    note: string;
+  };
+  fieldStatus: {
+    cropCondition: { label: string; color: string };
+    waterStress: { label: string; color: string };
+    pestRisk: { label: string; color: string; provisional: boolean };
+    diseaseRisk: { label: string; color: string; provisional: boolean };
+    overall: string;
+  };
+  recommendation: {
+    action: string;
+    window: string;
+    description: string;
+    quantity: string;
+    applicationWindow: string;
+    estimatedCost: number | null;
+    costCitation: string | null;
+    confidence: string;
+    citation: string;
+    status: string;
+    reason: string | null;
+    requiredActions: string[];
+    flags: string[];
+  };
+  timeline: string[];
+  activeAlert: { title: string; description: string } | null;
+};
+
+function mapTwinToFieldState(data: TwinResponse): FieldState {
+  const nutrients = data.nutrients || {};
+  const soil = data.soilDetail || {};
+  const plan = data.currentPlan || ({} as TwinResponse['currentPlan']);
+  const weather = data.weather || { rainfall_mm_next_7d: 0, heavy_rain_alert: false, condition: 'Unknown' };
+  const stages: string[] = data.stageSequence || [];
+  const currentStageName = data.growthStage || '';
+
+  const nScore = soil.n_score ?? 0;
+  const pScore = soil.p_score ?? 0;
+  const kScore = soil.k_score ?? 0;
+
+  const rainfallOk = !weather.heavy_rain_alert;
+  const waterStress = rainfallOk ? 'Low' : 'High';
+  const waterColor = rainfallOk ? 'text-gray-400' : 'text-red-500';
+  const nSufficient = nScore >= 60;
+  const cropCond = nSufficient ? 'Good' : 'Moderate';
+  const cropColor = nSufficient ? 'text-green-500' : 'text-amber-500';
+  const overall = (nSufficient && rainfallOk) ? 'Healthy' : 'Needs Attention';
+
+  const gap = plan.soilGap || {};
+  const description = `Based on real soil test (N=${nutrients.n?.current ?? '—'} kg/ha, P=${nutrients.p?.current ?? '—'} kg/ha, K=${nutrients.k?.current ?? '—'} kg/ha) and ${data.crop} at ${currentStageName} stage. Nutrient gaps: N ${gap.N ?? '—'} kg/ha, P₂O₅ ${gap.P2O5 ?? '—'} kg/ha, K₂O ${gap.K2O ?? '—'} kg/ha.${plan.citation ? ` Source: ${plan.citation}.` : ''}`;
+
+  return {
+    id: data.fieldId,
+    status: 'Active',
+    location: data.location || `${data.lat}, ${data.lon}`,
+    crop: data.crop || 'Unknown',
+    stage: currentStageName,
+    stageSequence: stages,
+    area: data.area_ha ? `${data.area_ha} ha` : '— ha',
+    soilType: data.soilType ?? null,
+    lat: data.lat,
+    lon: data.lon,
+    hasSoilTest: data.hasSoilTest ?? false,
+    soilHealthScore: data.soilHealthScore ?? 0,
+    weather: {
+      rainfall7d: weather.rainfall_mm_next_7d ?? 0,
+      heavy_rain_alert: weather.heavy_rain_alert ?? false,
+      condition: weather.condition || 'Unknown',
+    },
+    soil: {
+      n: { value: nutrients.n?.current ?? 0, score: nScore, label: nutrientLabel(nScore), color: 'bg-blue-500' },
+      p: { value: nutrients.p?.current ?? 0, score: pScore, label: nutrientLabel(pScore), color: 'bg-purple-500' },
+      k: { value: nutrients.k?.current ?? 0, score: kScore, label: nutrientLabel(kScore), color: 'bg-amber-500' },
+      ph: soil.ph ?? null,
+      oc: soil.oc_percent ?? null,
+      note: description,
+    },
+    fieldStatus: {
+      cropCondition: { label: cropCond, color: cropColor },
+      waterStress: { label: waterStress, color: waterColor },
+      pestRisk: { label: 'Moderate', color: 'text-amber-500', provisional: true },
+      diseaseRisk: { label: 'Low', color: 'text-gray-400', provisional: true },
+      overall,
+    },
+    recommendation: {
+      action: plan.nextAction || 'Awaiting plan',
+      window: plan.applicationWindow?.split('(')[0]?.trim() || '—',
+      description,
+      quantity: plan.quantity || 'N/A',
+      applicationWindow: plan.applicationWindow || 'N/A',
+      estimatedCost: plan.estimatedCost ?? null,
+      costCitation: plan.costCitation ?? null,
+      confidence: plan.confidence || '—',
+      citation: plan.citation || '',
+      status: plan.status || 'NO_DATA',
+      reason: plan.reason ?? null,
+      requiredActions: plan.requiredActions || [],
+      flags: plan.flags || [],
+    },
+    timeline: stages,
+    activeAlert: data.activeAlert,
+  };
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
-export default function DashboardPage() {
-  const [field, setField] = React.useState<FieldState>(defaultField);
+function DashboardContent() {
+  const { fieldId, setFieldId, fields, fieldsError } = useFieldParam();
+  const [field, setField] = React.useState<FieldState | null>(null);
   const [loading, setLoading] = React.useState(true);
-  const maxForecastMm = Math.max(...[12, 5, 18, 28, 42, 10, 6]);
+  const [error, setError] = React.useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = React.useState<Date | null>(null);
+  const mapCardRef = React.useRef<HTMLDivElement>(null);
 
-  React.useEffect(() => {
-    fetch('http://localhost:8000/fields/REAL-001/twin')
-      .then(r => r.json())
-      .then(data => {
-        const nutrients = data.nutrients || {};
-        const soil = data.soilDetail || {};
-        const plan = data.currentPlan || {};
-        const weather = data.weather || {};
-        const stages: string[] = data.stageSequence || defaultField.stageSequence;
-        const currentStageName = data.growthStage || '';
-
-        // Score-to-label for nutrients
-        const nScore = soil.n_score ?? 0;
-        const pScore = soil.p_score ?? 0;
-        const kScore = soil.k_score ?? 0;
-
-        // Derive field status from real data
-        const rainfallOk = !weather.heavy_rain_alert;
-        const waterStress = rainfallOk ? 'Low' : 'High';
-        const waterColor = rainfallOk ? 'text-gray-400' : 'text-red-500';
-        const nSufficient = nScore >= 60;
-        const cropCond = nSufficient ? 'Good' : 'Moderate';
-        const cropColor = nSufficient ? 'text-green-500' : 'text-amber-500';
-        const overall = (nSufficient && rainfallOk) ? 'Healthy' : 'Needs Attention';
-
-        // Build timeline from stageSequence
-        const currentIdx = stages.findIndex(s =>
-          s.toLowerCase() === currentStageName.toLowerCase()
-        );
-        const timeline = stages.map((name, i) => ({
-          name,
-          done: i < (currentIdx >= 0 ? currentIdx : stages.length - 2),
-          current: i === (currentIdx >= 0 ? currentIdx : stages.length - 2),
-        }));
-
-        // Recommendation description
-        const gap = plan.soilGap || {};
-        const description = `Based on Polgaon real soil test (N=${nutrients.n?.current} kg/ha, P=${nutrients.p?.current} kg/ha, K=${nutrients.k?.current} kg/ha) and ${data.crop} at ${currentStageName} stage. Nutrient gaps: N ${gap.N ?? '—'} kg/ha, P₂O₅ ${gap.P2O5 ?? '—'} kg/ha, K₂O ${gap.K2O ?? '—'} kg/ha. Source: ${plan.citation || 'MPKV-ICAR RDF Kolhapur 2022'}.`;
-
-        const insight = data.activeAlert ? [{
-          title: data.activeAlert.title || 'New Alert',
-          time: 'Just now',
-          desc: data.activeAlert.description || '',
-          img: '/image copy 2.png'
-        }] : [];
-
-        setField({
-          id: data.fieldId || 'REAL-001',
-          status: 'Active',
-          location: data.location || 'Kolhapur, Maharashtra',
-          crop: data.crop || 'Sugarcane',
-          stage: currentStageName,
-          stageSequence: stages,
-          area: data.area_ha ? `${data.area_ha} ha` : '2 ha',
-          soilType: 'Laterite / Clay Loam',
-          lat: data.lat || 16.0644,
-          lon: data.lon || 74.1352,
-          soilHealthScore: data.soilHealthScore ?? 0,
-          weather: {
-            temp: 28,
-            condition: weather.condition || 'Clear',
-            humidity: 75,
-            wind: 10,
-            rain24h: 0,
-            rainfall7d: weather.rainfall_mm_next_7d ?? 17,
-          },
-          soil: {
-            n: { value: nutrients.n?.current ?? 0, score: nScore, label: nutrientLabel(nScore), color: 'bg-blue-500' },
-            p: { value: nutrients.p?.current ?? 0, score: pScore, label: nutrientLabel(pScore), color: 'bg-purple-500' },
-            k: { value: nutrients.k?.current ?? 0, score: kScore, label: nutrientLabel(kScore), color: 'bg-amber-500' },
-            ph: soil.ph ?? null,
-            oc: soil.oc_percent ?? null,
-            note: description,
-          },
-          fieldStatus: {
-            cropCondition: { label: cropCond, color: cropColor },
-            waterStress: { label: waterStress, color: waterColor },
-            pestRisk: { label: 'Moderate', color: 'text-amber-500' },   // no pest agent yet
-            diseaseRisk: { label: 'Low', color: 'text-gray-400' },
-            overall,
-          },
-          recommendation: {
-            action: plan.nextAction || 'DAP + Urea + MOP',
-            window: plan.applicationWindow?.split('(')[0]?.trim() || 'This week',
-            description,
-            quantity: plan.quantity || '—',
-            applicationWindow: plan.applicationWindow || '—',
-            expectedBenefit: 'Meet seasonal NPK requirements; target 80-100 t/ha yield',
-            estimatedCost: plan.estimatedCost ?? 0,
-            confidence: plan.confidence || '—',
-            citation: plan.citation || '',
-          },
-          timeline,
-          insights: [...insight, ...defaultField.insights],
-        });
+  const fetchTwin = React.useCallback((signal?: AbortSignal) => {
+    getTwin(fieldId, signal)
+      .then((data) => {
+        setField(mapTwinToFieldState(data));
+        setError(null);
+        setLastUpdated(new Date());
         setLoading(false);
       })
-      .catch(err => {
-        console.error('Error fetching twin data:', err);
+      .catch((err) => {
+        if (err instanceof DOMException && err.name === 'AbortError') return;
+        const message = err instanceof ApiError ? err.message : 'Could not reach the AgroTwin backend.';
+        setError(message);
         setLoading(false);
       });
-  }, []);
+  }, [fieldId]);
+
+  // Intentional: switching fields must show a fresh loading state immediately,
+  // not derive it from render — eslint-plugin-react-hooks flags this even when correct.
+  /* eslint-disable react-hooks/set-state-in-effect */
+  React.useEffect(() => {
+    setLoading(true);
+    const controller = new AbortController();
+    fetchTwin(controller.signal);
+    // Poll so a backend-side event (e.g. a heavy-rain replan) shows up on its
+    // own — the "wow moment" is nobody has to ask the AI anything or refresh.
+    const intervalId = setInterval(() => fetchTwin(), 15000);
+    return () => {
+      controller.abort();
+      clearInterval(intervalId);
+    };
+  }, [fetchTwin]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  function scrollToMap() {
+    mapCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  // Full-page honest error state: never show stale/fake data as if it were live.
+  if (error && !field) {
+    return (
+      <div className="min-h-screen bg-gray-50 font-sans flex items-center justify-center p-6">
+        <div className="max-w-md text-center bg-white border border-red-100 rounded-xl shadow-sm p-8">
+          <div className="text-3xl mb-3">⚠️</div>
+          <h2 className="text-lg font-bold text-gray-900 mb-2">Can&apos;t reach the backend</h2>
+          <p className="text-sm text-gray-500 mb-4">{error}</p>
+          <button
+            onClick={() => fetchTwin()}
+            className="bg-gray-900 hover:bg-gray-800 text-white text-sm font-semibold px-5 py-2.5 rounded-lg transition"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (loading && !field) {
+    return (
+      <div className="min-h-screen bg-gray-50 font-sans flex items-center justify-center">
+        <div className="flex items-center gap-3 text-gray-500 text-sm">
+          <span className="inline-block w-4 h-4 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
+          Loading field data…
+        </div>
+      </div>
+    );
+  }
+
+  if (!field) return null;
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans">
 
+      {error && (
+        <div className="bg-red-50 border-b border-red-200 text-red-700 text-xs px-4 py-2 text-center">
+          Connection to backend lost — showing last known data
+          {lastUpdated && ` from ${lastUpdated.toLocaleTimeString()}`}.{' '}
+          <button onClick={() => fetchTwin()} className="underline font-semibold">Retry</button>
+        </div>
+      )}
+
+      {/* ── Field selector bar ── */}
+      <div className="bg-white border-b border-gray-100 px-4 md:px-6 py-2.5 flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-500 font-medium">Field:</span>
+          {fields.length > 0 ? (
+            <FieldSelector fieldId={fieldId} fields={fields} onChange={setFieldId} />
+          ) : (
+            <span className="text-xs text-gray-400">{fieldsError ? `Field list unavailable (${fieldsError})` : 'Loading fields…'}</span>
+          )}
+        </div>
+        <Link
+          href={`/upload?field=${encodeURIComponent(fieldId)}`}
+          className="inline-flex items-center gap-1.5 bg-gray-900 hover:bg-gray-800 text-white text-xs font-semibold px-3 py-1.5 rounded-md transition"
+        >
+          📤 Upload Soil Report
+        </Link>
+      </div>
+
+      {/* ── Gate: no soil report on file for this field yet ── */}
+      {!field.hasSoilTest && (
+        <div className="min-h-[70vh] flex items-center justify-center p-6">
+          <div className="max-w-md text-center bg-white border border-gray-100 rounded-xl shadow-sm p-8">
+            <div className="text-4xl mb-3">🧪</div>
+            <h2 className="text-lg font-bold text-gray-900 mb-2">No soil report on file for {field.id}</h2>
+            <p className="text-sm text-gray-500 mb-5">
+              The digital twin needs at least one soil test before it can show nutrient levels, a
+              fertilizer recommendation, or a field health score. Upload a soil health card to unlock
+              this field&apos;s dashboard.
+            </p>
+            <Link
+              href={`/upload?field=${encodeURIComponent(field.id)}`}
+              className="inline-flex items-center gap-2 bg-gray-900 hover:bg-gray-800 text-white text-sm font-semibold px-5 py-2.5 rounded-lg transition"
+            >
+              📤 Upload Soil Report
+            </Link>
+          </div>
+        </div>
+      )}
+
       {/* ── Hero / Field Overview Banner ── */}
+      {field.hasSoilTest && (<>
       <div className="relative w-full h-56 md:h-72 overflow-hidden">
         <img
           src="/image.png"
@@ -242,7 +305,10 @@ export default function DashboardPage() {
           Field Overview
         </div>
 
-        <button className="absolute top-4 right-5 flex items-center gap-1.5 bg-white/90 text-gray-800 text-xs font-semibold px-3 py-1.5 rounded-full shadow hover:bg-white transition">
+        <button
+          onClick={scrollToMap}
+          className="absolute top-4 right-5 flex items-center gap-1.5 bg-white/90 text-gray-800 text-xs font-semibold px-3 py-1.5 rounded-full shadow hover:bg-white transition"
+        >
           <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
           View on Map
         </button>
@@ -264,7 +330,7 @@ export default function DashboardPage() {
             { icon: '🌾', label: 'Crop', value: field.crop },
             { icon: '📅', label: 'Stage', value: field.stage },
             { icon: '📐', label: 'Area', value: field.area },
-            { icon: '🪨', label: 'Soil Type', value: field.soilType },
+            { icon: '🪨', label: 'Soil Type', value: field.soilType || 'Not recorded' },
           ].map((item) => (
             <div key={item.label} className="flex items-center gap-2 bg-white/15 backdrop-blur-sm border border-white/20 rounded-lg px-3 py-2">
               <span className="text-base">{item.icon}</span>
@@ -276,15 +342,13 @@ export default function DashboardPage() {
           ))}
         </div>
 
-        {/* Weather widget — real rainfall from weather_agent */}
+        {/* Weather widget — only real fields (rainfall_mm_next_7d, condition, heavy_rain_alert) */}
         <div className="absolute bottom-4 right-5 hidden md:flex items-center gap-4 bg-white/15 backdrop-blur-md border border-white/20 rounded-xl px-5 py-3">
-          <div>
-            <div className="text-white text-3xl font-bold">{field.weather.temp}°C</div>
-            <div className="text-white/70 text-xs">{field.weather.condition}</div>
+          <div className="max-w-[220px]">
+            <div className="text-white/70 text-[10px] uppercase tracking-wide mb-0.5">Weather agent</div>
+            <div className="text-white text-xs">{field.weather.condition}</div>
           </div>
-          <div className="text-white/80 text-xs space-y-1">
-            <div className="flex justify-between gap-6"><span>Humidity</span><span className="font-semibold text-white">{field.weather.humidity}%</span></div>
-            <div className="flex justify-between gap-6"><span>Wind</span><span className="font-semibold text-white">{field.weather.wind} km/h</span></div>
+          <div className="text-white/80 text-xs">
             <div className="flex justify-between gap-6"><span>Rain (7d)</span><span className="font-semibold text-white">{field.weather.rainfall7d} mm</span></div>
           </div>
         </div>
@@ -337,7 +401,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Weather Forecast — real rainfall_mm_next_7d */}
+        {/* Weather Forecast — real rainfall_mm_next_7d only, no fabricated daily series */}
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
@@ -353,27 +417,16 @@ export default function DashboardPage() {
                 <div className="text-3xl font-bold text-gray-800">{field.weather.rainfall7d} mm</div>
               </div>
               <div className={`border rounded-lg px-2 py-1 text-xs font-semibold ${
-                field.weather.heavy_rain_alert ?? false
+                field.weather.heavy_rain_alert
                   ? 'bg-red-50 border-red-200 text-red-700'
                   : 'bg-green-50 border-green-200 text-green-700'
               }`}>
-                {field.weather.heavy_rain_alert ?? false ? '⚠ Heavy rain' : '✓ Suitable for application'}
+                {field.weather.heavy_rain_alert ? '⚠ Heavy rain' : '✓ Suitable for application'}
               </div>
             </div>
           </div>
-          <div className="text-xs text-gray-400 mb-3">Source: Open-Meteo via weather agent</div>
-          <div className="flex items-end gap-1 h-16">
-            {[12, 5, 18, 28, 42, 10, 6].map((mm, i) => (
-              <div key={i} className="flex flex-col items-center flex-1 gap-1">
-                <div
-                  className="w-full bg-green-500 rounded-t-sm"
-                  style={{ height: `${Math.max(4, (mm / 42) * 48)}px` }}
-                />
-                <div className="text-[9px] text-gray-500">{['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][i]}</div>
-                <div className="text-[9px] font-semibold text-gray-700">{mm}mm</div>
-              </div>
-            ))}
-          </div>
+          <div className="text-xs text-gray-400">Source: Open-Meteo via weather agent</div>
+          <div className="text-[10px] text-gray-300 mt-1">Daily breakdown unavailable — only the 7-day total is reported by the API.</div>
         </div>
 
         {/* Field Status — derived from real N sufficiency + weather_agent */}
@@ -385,14 +438,19 @@ export default function DashboardPage() {
 
           <div className="space-y-3">
             {[
-              { name: 'Crop condition', value: field.fieldStatus.cropCondition.label, color: field.fieldStatus.cropCondition.color },
-              { name: 'Water stress', value: field.fieldStatus.waterStress.label, color: field.fieldStatus.waterStress.color },
-              { name: 'Pest risk', value: field.fieldStatus.pestRisk.label, color: field.fieldStatus.pestRisk.color },
-              { name: 'Disease risk', value: field.fieldStatus.diseaseRisk.label, color: field.fieldStatus.diseaseRisk.color },
+              { name: 'Crop condition', value: field.fieldStatus.cropCondition.label, color: field.fieldStatus.cropCondition.color, provisional: false },
+              { name: 'Water stress', value: field.fieldStatus.waterStress.label, color: field.fieldStatus.waterStress.color, provisional: false },
+              { name: 'Pest risk', value: field.fieldStatus.pestRisk.label, color: field.fieldStatus.pestRisk.color, provisional: field.fieldStatus.pestRisk.provisional },
+              { name: 'Disease risk', value: field.fieldStatus.diseaseRisk.label, color: field.fieldStatus.diseaseRisk.color, provisional: field.fieldStatus.diseaseRisk.provisional },
             ].map((item) => (
               <div key={item.name} className="flex items-center justify-between py-1.5 border-b border-gray-50 last:border-0">
                 <span className="text-xs text-gray-500">{item.name}</span>
                 <div className="flex items-center gap-1.5">
+                  {item.provisional && (
+                    <span className="text-[9px] font-semibold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full" title="No pest/disease detection agent wired up yet">
+                      Provisional
+                    </span>
+                  )}
                   <StatusDot color={item.color} />
                   <span className={`text-xs font-semibold ${item.color}`}>{item.value}</span>
                 </div>
@@ -411,10 +469,20 @@ export default function DashboardPage() {
         </div>
 
         {/* Field Location — dynamic lat/lon */}
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 flex flex-col">
-          <div className="flex items-center gap-2 mb-3">
-            <span className="text-lg">📍</span>
-            <span className="font-semibold text-gray-800 text-sm">Field Location</span>
+        <div ref={mapCardRef} className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 flex flex-col">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">📍</span>
+              <span className="font-semibold text-gray-800 text-sm">Field Location</span>
+            </div>
+            <a
+              href={`https://www.google.com/maps?q=${field.lat},${field.lon}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[10px] font-semibold text-gray-500 hover:text-green-700 transition underline"
+            >
+              Open in Google Maps ↗
+            </a>
           </div>
           <div className="relative flex-1 rounded-lg overflow-hidden min-h-[160px]">
             <FieldMap
@@ -427,54 +495,104 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Next Recommended Action — real RAG pipeline result */}
+        {/* Next Recommended Action — real pipeline result */}
         <div className="lg:col-span-3 bg-white rounded-xl border border-gray-100 shadow-sm p-5">
-          <div className="flex items-start gap-4">
-            <span className="text-2xl mt-0.5">🌱</span>
-            <div className="flex-1 min-w-0">
-              <div className="flex flex-wrap items-center gap-3 mb-2">
-                <span className="text-xs text-gray-500 font-medium">Next Recommended Action</span>
-                <span className="bg-green-100 text-green-700 text-xs font-bold px-2 py-0.5 rounded-full">{field.recommendation.window}</span>
-                {field.recommendation.confidence && (
-                  <span className="bg-blue-50 text-blue-600 text-xs font-bold px-2 py-0.5 rounded-full border border-blue-200">
-                    Confidence: {field.recommendation.confidence}
+          {field.recommendation.status === 'ABSTAIN' ? (
+            <div className="flex items-start gap-3">
+              <span className="text-2xl mt-0.5">⚠️</span>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="bg-red-50 text-red-700 border border-red-200 text-xs font-bold px-2 py-0.5 rounded-full">
+                    ⚠ LOW CONFIDENCE — ABSTAINED
                   </span>
+                </div>
+                <h2 className="text-xl font-bold text-gray-900 mb-2">A reliable fertilizer plan cannot currently be produced</h2>
+                {field.recommendation.reason && (
+                  <p className="text-sm text-gray-600 mb-3">{field.recommendation.reason}</p>
+                )}
+                {field.recommendation.requiredActions.length > 0 && (
+                  <div className="mb-3">
+                    <div className="text-xs font-semibold text-gray-500 mb-1">Required:</div>
+                    <ul className="text-sm text-gray-700 list-disc list-inside space-y-0.5">
+                      {field.recommendation.requiredActions.map((action, i) => (
+                        <li key={i}>{action}</li>
+                      ))}
+                    </ul>
+                  </div>
                 )}
               </div>
-              <h2 className="text-2xl font-bold text-gray-900 mb-2">{field.recommendation.action}</h2>
-              <p className="text-sm text-gray-500 leading-relaxed mb-3 max-w-xl">{field.recommendation.description}</p>
-              {field.recommendation.citation && (
-                <p className="text-[10px] text-gray-400 italic mb-4">Source: {field.recommendation.citation}</p>
-              )}
-              <Link href="/simulator" className="inline-flex items-center gap-2 bg-gray-900 hover:bg-gray-800 text-white text-sm font-semibold px-5 py-2.5 rounded-lg transition">
-                Simulate in What-If
-                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
-              </Link>
             </div>
+          ) : field.recommendation.status === 'NO_DATA' ? (
+            <div className="flex items-start gap-3 text-gray-500">
+              <span className="text-2xl mt-0.5">🌱</span>
+              <div>
+                <h2 className="text-lg font-bold text-gray-700 mb-1">No recommendation generated yet</h2>
+                <p className="text-sm">Call the recommend pipeline for this field to see a plan here.</p>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-start gap-4">
+              <span className="text-2xl mt-0.5">🌱</span>
+              <div className="flex-1 min-w-0">
+                <div className="flex flex-wrap items-center gap-3 mb-2">
+                  <span className="text-xs text-gray-500 font-medium">Next Recommended Action</span>
+                  <span className="bg-green-100 text-green-700 text-xs font-bold px-2 py-0.5 rounded-full">{field.recommendation.window}</span>
+                  {field.recommendation.confidence && (
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${confidenceBadgeClass(field.recommendation.confidence)}`}>
+                      Confidence: {field.recommendation.confidence}
+                    </span>
+                  )}
+                </div>
+                <h2 className="text-2xl font-bold text-gray-900 mb-2">{field.recommendation.action}</h2>
+                <p className="text-sm text-gray-500 leading-relaxed mb-3 max-w-xl">{field.recommendation.description}</p>
+                {(field.recommendation.confidence === 'LOW' || field.recommendation.confidence === 'MEDIUM') && field.recommendation.flags.length > 0 && (
+                  <div className="mb-3 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                    <div className="text-xs font-semibold text-amber-700 mb-1">⚠ Reasons for reduced confidence:</div>
+                    <ul className="text-xs text-amber-800 list-disc list-inside space-y-0.5">
+                      {field.recommendation.flags.map((flag, i) => (
+                        <li key={i}>{flag}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {field.recommendation.citation && (
+                  <p className="text-[10px] text-gray-400 italic mb-4">Source: {field.recommendation.citation}</p>
+                )}
+                <Link href={`/simulator?field=${encodeURIComponent(field.id)}`} className="inline-flex items-center gap-2 bg-gray-900 hover:bg-gray-800 text-white text-sm font-semibold px-5 py-2.5 rounded-lg transition">
+                  Simulate in What-If
+                  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
+                </Link>
+              </div>
 
-            {/* Real fertilizer quantities */}
-            <div className="hidden md:flex flex-col gap-4 min-w-[180px] text-sm">
-              <div>
-                <div className="flex items-center gap-2 text-gray-400 text-xs mb-0.5"><span>📦</span> Quantity</div>
-                <div className="font-bold text-gray-800 text-xs leading-relaxed">{field.recommendation.quantity}</div>
+              {/* Real fertilizer quantities */}
+              <div className="hidden md:flex flex-col gap-4 min-w-[180px] text-sm">
+                <div>
+                  <div className="flex items-center gap-2 text-gray-400 text-xs mb-0.5"><span>📦</span> Quantity</div>
+                  <div className="font-bold text-gray-800 text-xs leading-relaxed">{field.recommendation.quantity}</div>
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 text-gray-400 text-xs mb-0.5"><span>📅</span> Application window</div>
+                  <div className="font-bold text-gray-800 text-xs">{field.recommendation.applicationWindow}</div>
+                </div>
+                <div>
+                  <div className="flex items-center gap-2 text-gray-400 text-xs mb-0.5"><span>💰</span> Est. Cost</div>
+                  <div className="font-bold text-gray-800">
+                    {field.recommendation.estimatedCost != null ? `₹${Math.round(field.recommendation.estimatedCost).toLocaleString()}` : 'N/A'}
+                  </div>
+                  {field.recommendation.costCitation && (
+                    <div className="text-[9px] text-gray-400 mt-0.5 leading-tight">Engineering-default estimate, not a sourced price.</div>
+                  )}
+                </div>
               </div>
-              <div>
-                <div className="flex items-center gap-2 text-gray-400 text-xs mb-0.5"><span>📅</span> Application window</div>
-                <div className="font-bold text-gray-800 text-xs">{field.recommendation.applicationWindow}</div>
-              </div>
-              <div>
-                <div className="flex items-center gap-2 text-gray-400 text-xs mb-0.5"><span>💰</span> Est. Cost</div>
-                <div className="font-bold text-gray-800">₹{field.recommendation.estimatedCost.toLocaleString()}</div>
-              </div>
-            </div>
 
-            <div className="hidden lg:block w-32 h-32 rounded-lg overflow-hidden flex-shrink-0">
-              <img src="/image copy 4.png" alt="Sugarcane crop" className="w-full h-full object-cover" />
+              <div className="hidden lg:block w-32 h-32 rounded-lg overflow-hidden flex-shrink-0">
+                <img src="/image copy 4.png" alt={`${field.crop} crop`} className="w-full h-full object-cover" />
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
-        {/* Recent Insights */}
+        {/* Recent Insights — real activeAlert only, honest empty state otherwise */}
         <div className="lg:row-span-2 bg-white rounded-xl border border-gray-100 shadow-sm p-5 flex flex-col">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
@@ -484,68 +602,44 @@ export default function DashboardPage() {
           </div>
 
           <div className="flex-1 space-y-3">
-            {field.insights.map((insight, i) => (
-              <div key={i} className="flex items-start gap-3 p-3 rounded-lg hover:bg-gray-50 transition cursor-pointer">
-                <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0">
-                  <img src={insight.img} alt={insight.title} className="w-full h-full object-cover" />
-                </div>
+            {field.activeAlert ? (
+              <div className="flex items-start gap-3 p-3 rounded-lg bg-amber-50/50 border border-amber-100">
+                <span className="text-xl">🔔</span>
                 <div className="min-w-0">
-                  <div className="text-xs font-semibold text-gray-800 leading-snug mb-0.5">{insight.title}</div>
-                  <div className="text-[10px] text-gray-400 mb-0.5">{insight.time}</div>
-                  <div className="text-[10px] text-gray-500 leading-snug">{insight.desc}</div>
+                  <div className="text-xs font-semibold text-gray-800 leading-snug mb-0.5">{field.activeAlert.title}</div>
+                  <div className="text-[10px] text-gray-500 leading-snug">{field.activeAlert.description}</div>
                 </div>
               </div>
-            ))}
+            ) : (
+              <div className="text-xs text-gray-400 italic py-4 text-center">No recent alerts for this field.</div>
+            )}
           </div>
         </div>
 
-        {/* Crop Stage Timeline — built from real stageSequence from DB */}
+        {/* Crop Stage Timeline — shared component, read-only, built from real stageSequence */}
         <div className="lg:col-span-3 bg-white rounded-xl border border-gray-100 shadow-sm p-5">
           <div className="flex items-center gap-2 mb-6">
             <span className="text-lg">🌱</span>
             <span className="font-semibold text-gray-800 text-sm">Crop Stage Timeline</span>
             <span className="text-xs text-gray-400 ml-1">— {field.crop} · Current: {field.stage}</span>
           </div>
-
-          <div className="relative">
-            <div className="absolute top-4 left-0 right-0 h-0.5 bg-gray-200" />
-            {field.timeline.length > 0 && (
-              <div className="absolute top-4 left-0 h-0.5 bg-green-500"
-                style={{ width: `${(Math.max(0, field.timeline.findIndex(s => s.current)) / (field.timeline.length - 1)) * 100}%` }} />
-            )}
-
-            <div className={`relative grid gap-2`} style={{ gridTemplateColumns: `repeat(${field.timeline.length || 6}, minmax(0, 1fr))` }}>
-              {field.timeline.map((stage, i) => (
-                <div key={i} className="flex flex-col items-center">
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center z-10 text-sm mb-2
-                    ${stage.current
-                      ? 'bg-green-600 border-2 border-green-600 text-white shadow-lg shadow-green-200'
-                      : stage.done
-                      ? 'bg-white border-2 border-green-500'
-                      : 'bg-white border-2 border-gray-200'
-                    }`}
-                  >
-                    {stage.done && !stage.current ? (
-                      <svg className="w-4 h-4 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7"/></svg>
-                    ) : (
-                      <span className={`text-base ${stage.current ? '' : 'opacity-30'}`}>🌿</span>
-                    )}
-                  </div>
-                  <div className={`text-center text-[10px] font-semibold ${stage.current ? 'text-green-700' : stage.done ? 'text-gray-600' : 'text-gray-300'}`}>
-                    {stage.name}
-                  </div>
-                  {stage.current && (
-                    <span className="mt-1 bg-green-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap">
-                      Current
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
+          {field.timeline.length > 0 ? (
+            <StageTimeline stages={field.timeline} currentStage={field.stage} readOnly />
+          ) : (
+            <div className="text-xs text-gray-400 italic">No stage sequence available for this crop.</div>
+          )}
         </div>
 
       </div>
+      </>)}
     </div>
+  );
+}
+
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-gray-50 flex items-center justify-center text-sm text-gray-500">Loading…</div>}>
+      <DashboardContent />
+    </Suspense>
   );
 }

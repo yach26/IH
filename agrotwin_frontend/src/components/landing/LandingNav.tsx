@@ -58,12 +58,6 @@ export default function LandingNav() {
           <LanguageSwitcher />
           <button
             onClick={() => router.push("/dashboard")}
-            className="hidden sm:block text-sm font-medium text-[#0F4D35] hover:text-[#0F4D35]/80 transition-colors"
-          >
-            Sign In
-          </button>
-          <button
-            onClick={() => router.push("/dashboard")}
             className="px-5 py-2.5 rounded-sm bg-[#0F4D35] text-[#FDFBF7] text-sm font-medium hover:bg-[#0F4D35]/90 active:scale-95 transition-all shadow-sm"
           >
             {t("nav.openDashboard")}
