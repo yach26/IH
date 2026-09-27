@@ -193,7 +193,7 @@ class RecommendationPipeline:
             lat = field_row["lat"] if "lat" in field_row.keys() else None
             lon = field_row["lon"] if "lon" in field_row.keys() else None
             weather_ctx = weather_agent.get_weather_context(
-                conn, field_id, lat, lon, mock_snapshot=mock_weather
+                conn, field_id, lat, lon, force_refresh=False, mock_snapshot=mock_weather
             )
             twin["weather"] = weather_ctx
             twin["flags"].extend(weather_ctx.get("flags") or [])

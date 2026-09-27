@@ -99,3 +99,31 @@ class RuleEngine:
 | Optional linprog kept but **not** wired as default | `app/agents/optimizer.py` |
 | Cost estimate (INR/kg config, never used as kg/ha source) | `estimate_cost()` |
 | Rules: max RDF rates, Urea+SSP compatibility, weather window, pH, EC, soil freshness | `app/core/rules.py` + `region_config.py` |
+
+### Optimizer invocation semantics (verified 2026-09-27, Phase 2.2)
+
+- The `"optimizer"` step **always runs** on the default `/recommend` path (it is one of
+  `FULL_STEPS` in `app/pipeline.py`, not opt-in) — but the *implementation* it runs is
+  `HeuristicOptimizer` by default (`app/pipeline.py::RecommendationPipeline.__init__`).
+- `POST /fields/{id}/recommend` accepts an optional body field `"optimizer"` (see
+  `RecommendRequest.optimizer` in `app/api/schemas.py`). Passing
+  `{"optimizer": "scipy_linprog"}` (aliases: `"linprog"`, `"scipy"`) switches to
+  `ScipyLinprogOptimizer` for that call via `get_optimizer()` in `app/core/optimizer.py`.
+  Omitting it, or any other value, uses `HeuristicOptimizer`.
+- **Disagreement handling**: when the active optimizer is `HeuristicOptimizer`
+  (`optimizer_id == "heuristic_dap_urea_mop"`) and its `plan_kg_ha` differs from the
+  ledger's own `how_much` quantities for the same product, `pipeline.py` **overwrites the
+  optimizer's numbers with the ledger's** and appends an `OPTIMIZER_OVERRIDDEN_BY_LEDGER`-style
+  flag — i.e. the ledger is the numeric source of truth; the heuristic optimizer's role in the
+  default path is to select which products to use, not to have the final say on quantity.
+  `ScipyLinprogOptimizer` is not reconciled against the ledger this way (it is
+  invitation-only, not on the default path), so calling it directly can legitimately return
+  slightly different splits than the ledger heuristic (confirmed live: for field REAL-001,
+  default heuristic gave `UREA_kg_ha=36.7` vs `36.6` from `scipy_linprog` — same DAP/MOP,
+  rounding-level LP difference, not a disagreement in requirement).
+- **Framing note**: describing the system as running "multi-objective optimization" by
+  default is not accurate — the default path is a deterministic heuristic split with a
+  ledger-enforced numeric guarantee. `ScipyLinprogOptimizer` (true LP, minimizes total
+  fertilizer weight) exists and is fully wired, but is opt-in via the `optimizer` field, not
+  the default demo path. Prefer describing the default as "evidence-grounded rule-based
+  allocation with an optional LP optimizer for weight minimization."

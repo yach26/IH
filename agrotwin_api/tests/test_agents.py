@@ -304,6 +304,79 @@ class TestWeatherAgent:
         assert "DAP_kg_ha" not in src
         assert "gap_n" not in src
 
+    def test_real_fetch_is_cached_on_repeat_call(self, conn, ids, monkeypatch):
+        """Phase 4.2: force_refresh=False must actually hit the in-memory cache
+        on a repeat call within the TTL window — previously this branch was dead
+        code (force_refresh defaulted True and pipeline.py never overrode it, so
+        every call re-fetched from the real network with no caching at all)."""
+        import app.agents.weather_agent as wa
+        wa._CACHE.clear()
+
+        call_count = {"n": 0}
+
+        class _FakeResponse:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {
+                    "daily": {
+                        "precipitation_sum": [1.0, 2.0],
+                        "precipitation_probability_max": [30, 40],
+                    }
+                }
+
+        def _fake_get(*args, **kwargs):
+            call_count["n"] += 1
+            return _FakeResponse()
+
+        monkeypatch.setattr(wa.requests, "get", _fake_get)
+
+        ctx1 = wa.get_weather_context(conn, ids["field_id"], lat=16.7, lon=74.2, force_refresh=False)
+        ctx2 = wa.get_weather_context(conn, ids["field_id"], lat=16.7, lon=74.2, force_refresh=False)
+
+        assert call_count["n"] == 1, "second call within TTL must be served from cache, not a new network call"
+        assert ctx1["snapshot"]["snapshot_id"] == ctx2["snapshot"]["snapshot_id"]
+
+    def test_real_forecast_crosses_heavy_rain_threshold(self, conn, ids, monkeypatch):
+        """Phase 4.2: a real-shaped forecast payload that crosses the configured
+        thresholds (rainfall_probability_pct=70, rainfall_mm_next_7d=50 per
+        region_config.py) must set heavy_rain_alert True — not just the demo
+        injection path in scripts/demo_heavy_rain.py."""
+        import app.agents.weather_agent as wa
+        wa._CACHE.clear()
+
+        class _FakeResponse:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {
+                    "daily": {
+                        "precipitation_sum": [10.0, 15.0, 20.0, 12.0, 8.0, 5.0, 3.0],
+                        "precipitation_probability_max": [60, 75, 90, 85, 70, 40, 30],
+                    }
+                }
+
+        monkeypatch.setattr(wa.requests, "get", lambda *a, **k: _FakeResponse())
+
+        ctx = wa.get_weather_context(conn, ids["field_id"], lat=16.7, lon=74.2, force_refresh=True)
+        assert ctx["heavy_rain_alert"] is True
+        assert ctx["snapshot"]["rainfall_mm_next_7d"] == 73.0
+
+    def test_real_network_happy_path(self, conn, ids):
+        """Phase 4.2: one real, unmocked call to the live Open-Meteo API — proves
+        the happy path (not just the graceful-degradation path already proven by
+        scripts/demo_heavy_rain.py) actually works when the network is reachable."""
+        import app.agents.weather_agent as wa
+        wa._CACHE.clear()
+        ctx = wa.get_weather_context(conn, ids["field_id"], lat=16.705, lon=74.2433, force_refresh=True)
+        if any("WEATHER_FETCH_ERROR" in f for f in ctx["flags"]):
+            pytest.skip("Live network to Open-Meteo unavailable in this environment")
+        assert ctx["snapshot"] is not None
+        assert ctx["snapshot"]["source"] == "open-meteo"
+        assert isinstance(ctx["snapshot"]["rainfall_mm_next_7d"], float)
+
 
 # ==============================================================================
 # 4. KNOWLEDGE AGENT (stub -- no data pack needed)
@@ -332,6 +405,22 @@ class TestKnowledgeAgent:
             assert "source_file" in chunk
             assert "n_kg_ha" not in chunk
             assert "plan_kg_ha" not in chunk
+
+    def test_dense_retrieval_is_active_and_relevant(self):
+        """Phase 2.1: confirms the 'hybrid BM25 + dense' claim actually holds —
+        sentence-transformers + FAISS must be installed and contributing, not
+        silently falling back to BM25-only."""
+        from app.agents.knowledge_agent import _get_index, reset_index
+        reset_index()
+        idx = _get_index()
+        assert idx._faiss_index is not None, "Dense FAISS index did not build — check sentence-transformers/faiss-cpu are installed"
+        assert idx._embedder is not None
+
+        results = idx.query("rice tillering nitrogen requirement kg per hectare", top_k=3)
+        assert len(results) >= 1
+        top = results[0]
+        assert "rice" in top["metadata"].get("crop", [])
+        assert "tillering" in (top.get("text", "") + str(top.get("metadata", {}))).lower()
 
 
 # ==============================================================================

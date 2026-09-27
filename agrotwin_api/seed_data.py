@@ -15,6 +15,25 @@ import sqlite3
 import csv
 import os
 import sys
+from datetime import datetime
+
+
+def _to_iso_date(raw: str, fallback: str = "2024-01-01") -> str:
+    """Normalizes a date string to ISO YYYY-MM-DD.
+
+    The real Polgaon CSV stores dates as DD-MM-YYYY. Every other table in
+    this schema (recommendations, events, etc.) uses ISO dates, and
+    `ORDER BY test_date DESC` throughout app/api/routes.py is a plain string
+    sort — a DD-MM-YYYY string sorts ahead of any real ISO date (e.g.
+    "24-10-2016" > "2026-09-27" lexicographically), which silently hid every
+    later-confirmed real soil test behind this 2016 seed row.
+    """
+    if not raw:
+        return fallback
+    try:
+        return datetime.strptime(raw.strip(), "%d-%m-%Y").strftime("%Y-%m-%d")
+    except ValueError:
+        return raw
 
 _api_root = os.path.abspath(os.path.dirname(__file__))
 if _api_root not in sys.path:
@@ -223,6 +242,15 @@ RECOMMENDATION_TYPE_BY_RECORD = {
     "SYN-006": "FULL_SEASON",   # Soybean
     "SYN-007": "IRRIGATED",     # Cotton, irrigation_type "Irrigated"
     "SYN-008": "RATOON",        # Sugarcane, notes say "ratoon"
+    # Real Polgaon Kolhapur records: Sugarcane, GRAND_GROWTH stage -> PRE_SEASONAL RDF row
+    "REAL-001": "PRE_SEASONAL",
+    "REAL-002": "PRE_SEASONAL",
+    "REAL-003": "PRE_SEASONAL",
+    "REAL-004": "PRE_SEASONAL",
+    "REAL-005": "PRE_SEASONAL",
+    "REAL-006": "PRE_SEASONAL",
+    "REAL-007": "PRE_SEASONAL",
+    "REAL-008": "PRE_SEASONAL",
 }
 
 
@@ -287,15 +315,16 @@ def seed_fields_and_soil_tests(conn, region_id, district_ids, crop_ids):
                  f"Real soil data from Polgaon - {row.get('Farmer Name', 'Unknown')}"),
             )
             field_id = cur.lastrowid
+            aliased_row = {**row, "record_id": rid, "N_kg_ha": n, "P_kg_ha": p, "K_kg_ha": k}
             field_ids[rid] = {"field_id": field_id, "crop_code": crop_code,
-                               "current_stage": "GRAND_GROWTH", "row": row}
+                               "current_stage": "GRAND_GROWTH", "row": aliased_row}
 
             cur.execute(
                 """INSERT INTO soil_tests
                    (field_id, test_date, n_kg_ha, p_kg_ha, k_kg_ha, ph, oc_percent,
                     source, is_synthetic, label_note)
                    VALUES (?,?,?,?,?,?,?,?,?,?)""",
-                (field_id, row.get("Date of Sample Taken", "2024-01-01"),
+                (field_id, _to_iso_date(row.get("Date of Sample Taken")),
                  float(row["N"]), float(row["P"]), float(row["K"]),
                  float(row["pH"]), float(row["OC"]),
                  "real_kolhapur_shc", False,

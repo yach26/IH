@@ -102,6 +102,33 @@ def test_real_easyocr_image_extraction(sample_report_image_bytes):
     assert data["n_kg_ha"]["confidence"] > 0.5
 
 
+def test_corrupt_image_upload_falls_back_to_manual_entry_live(client, db):
+    """Phase 4.1: a real corrupt/unreadable image, uploaded over live HTTP, must
+    signal graceful fallback (not a 500), and must NOT write to soil_tests since
+    nothing was ever confirmed."""
+    conn, ids = db
+    field_id = ids["field_id"]
+
+    before = conn.execute(
+        "SELECT COUNT(*) AS n FROM soil_tests WHERE field_id = ?", (field_id,)
+    ).fetchone()["n"]
+
+    garbage_png_bytes = b"\x89PNG\r\n\x1a\n" + b"\x00\xff\x13\x37" * 200
+    files = {"file": ("corrupt_report.png", io.BytesIO(garbage_png_bytes), "image/png")}
+    res = client.post(f"/fields/{field_id}/soil-report/upload", files=files)
+
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["status"] in ("no_text_detected", "extraction_failed", "OCR_FAILED")
+    for v in body["extracted_data"].values():
+        assert v["value"] is None
+
+    after = conn.execute(
+        "SELECT COUNT(*) AS n FROM soil_tests WHERE field_id = ?", (field_id,)
+    ).fetchone()["n"]
+    assert after == before, "Upload alone must never write to soil_tests without farmer confirmation"
+
+
 def test_field_upload_and_confirm_flow(client, sample_report_text, db):
     conn, ids = db
     field_id = ids["field_id"]

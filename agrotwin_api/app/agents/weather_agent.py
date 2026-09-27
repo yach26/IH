@@ -64,7 +64,12 @@ def get_weather_context(
         ts, cached = _CACHE[cache_key]
         if time.time() - ts < CACHE_TTL_SECONDS:
             snapshot = cached
-    elif force_refresh:
+
+    # Cache miss/expired, or an explicit force_refresh: do a real fetch. This
+    # must NOT be an `elif force_refresh` — that left `not force_refresh` with an
+    # empty/expired cache permanently un-fetched (dead cache, no real call ever
+    # made on cold start).
+    if snapshot is None and not mock_snapshot:
         try:
             snapshot = _fetch_and_store_snapshot(conn, field_id, lat, lon)
         except Exception as e:

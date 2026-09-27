@@ -58,5 +58,17 @@ def test_recommend_and_inject_heavy_rain(db):
         assert alerts.status_code == 200
         health = client.get("/health")
         assert health.json()["status"] == "ok"
+
+        # Phase 3.2: /twin must reflect the just-injected heavy-rain event for the
+        # frontend dashboard to show it — not a hardcoded stub, and activeAlert.title
+        # must be the real alert_type (previously read a non-existent "type" key).
+        twin = client.get(f"/fields/{ids['field_id']}/twin")
+        assert twin.status_code == 200, twin.text
+        twin_body = twin.json()
+        assert twin_body["weather"]["heavy_rain_alert"] is True
+        assert twin_body["weather"]["rainfall_mm_next_7d"] == 80.0
+        assert twin_body["activeAlert"] is not None
+        assert twin_body["activeAlert"]["title"] == "HEAVY_RAIN_ALERT"
+        assert twin_body["activeAlert"]["description"]
     finally:
         app.dependency_overrides.clear()

@@ -68,7 +68,14 @@ Every override is written to the audit log.
 ## Checklist
 
 - [x] Validation Agent implements all abstain rules
-- [ ] Frontend clearly surfaces low-confidence and ABSTAIN states
+- [x] Frontend clearly surfaces low-confidence and ABSTAIN states
+      (`agrotwin_frontend/src/app/dashboard/page.tsx` — ABSTAIN renders the
+      "⚠ LOW CONFIDENCE — ABSTAINED" block with `reason` + itemized
+      `requiredActions`; LOW/MEDIUM confidence renders an itemized amber
+      "reduced confidence" flags box. Backed by `GET /fields/{id}/twin`'s
+      `currentPlan.status/reason/requiredActions/flags`, verified live for
+      both ABSTAIN and LOW-confidence cases 2026-09-27; see
+      `tests/test_api_override_abstain.py`.)
 - [x] Agronomist override endpoint + audit trail
 - [x] No silent acceptance of low-quality data
 - [x] Farmer confirmation required for OCR values

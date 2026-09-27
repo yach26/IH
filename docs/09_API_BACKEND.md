@@ -27,7 +27,7 @@ GET    /fields/{field_id}/recommendations/latest
 POST   /fields/{field_id}/what-if        # sensitivity simulation
 POST   /events                           # inject event (demo / weather webhook)
 GET    /fields/{field_id}/alerts
-POST   /agronomist/override              # expert override
+POST   /fields/{field_id}/override        # expert override
 GET    /health
 ```
 

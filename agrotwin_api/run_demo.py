@@ -14,6 +14,10 @@ import sqlite3
 import json
 import csv
 import os
+import sys
+
+if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
+    sys.stdout.reconfigure(encoding="utf-8")
 
 from seed_data import seed_all, RECOMMENDATION_TYPE_BY_RECORD
 from ledger import run_field
@@ -43,7 +47,7 @@ def write_back(conn, result):
            VALUES (?, (SELECT crop_id FROM crops WHERE crop_code=?), ?, ?,?,?,?,?,?,?,?,?,?,?,?)""",
         (result["field_id"], result["crop"], result["current_stage"],
          result["required"]["N"], result["required"]["P2O5"], result["required"]["K2O"],
-         result["citation"], result["soil"]["N"], result["soil"]["P_proxy"], result["soil"]["K"],
+         result["citation"], result["soil"]["N"], result["soil"]["P_kg_ha"], result["soil"]["K"],
          result["gap"]["N"], result["gap"]["P2O5"], result["gap"]["K2O"],
          "; ".join(result["flags"]), 1),
     )
@@ -85,7 +89,7 @@ def main():
             print(f"  STATUS: ABSTAIN — {r['reason']}")
             continue
         print(f"  Required (kg/ha):  N={r['required']['N']}  P2O5={r['required']['P2O5']}  K2O={r['required']['K2O']}")
-        print(f"  Soil (kg/ha):      N={r['soil']['N']}  P(proxy)={r['soil']['P_proxy']}  K={r['soil']['K']}")
+        print(f"  Soil (kg/ha):      N={r['soil']['N']}  P(proxy)={r['soil']['P_kg_ha']}  K={r['soil']['K']}")
         print(f"  Gap (kg/ha):       N={r['gap']['N']}  P2O5={r['gap']['P2O5']}  K2O={r['gap']['K2O']}")
         print(f"  Plan (kg/ha):      DAP={r['plan_kg_ha']['DAP_kg_ha']}  "
               f"Urea={r['plan_kg_ha']['UREA_kg_ha']}  MOP={r['plan_kg_ha']['MOP_kg_ha']}")
@@ -95,11 +99,11 @@ def main():
 
     # ---- CSV export ----
     csv_path = os.path.join(OUT_DIR, "ledger_results.csv")
-    with open(csv_path, "w", newline="") as f:
+    with open(csv_path, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(["record_id", "crop", "rec_type", "stage", "status", "confidence",
                     "required_N", "required_P2O5", "required_K2O",
-                    "soil_N", "soil_P_proxy", "soil_K",
+                    "soil_N", "soil_P_kg_ha", "soil_K",
                     "gap_N", "gap_P2O5", "gap_K2O",
                     "DAP_kg_ha", "Urea_kg_ha", "MOP_kg_ha",
                     "flags", "citation"])
@@ -112,7 +116,7 @@ def main():
                 w.writerow([r["record_id"], r["crop"], r["recommendation_type"], r["current_stage"],
                             r["status"], r["confidence"],
                             r["required"]["N"], r["required"]["P2O5"], r["required"]["K2O"],
-                            r["soil"]["N"], r["soil"]["P_proxy"], r["soil"]["K"],
+                            r["soil"]["N"], r["soil"]["P_kg_ha"], r["soil"]["K"],
                             r["gap"]["N"], r["gap"]["P2O5"], r["gap"]["K2O"],
                             r["plan_kg_ha"]["DAP_kg_ha"], r["plan_kg_ha"]["UREA_kg_ha"],
                             r["plan_kg_ha"]["MOP_kg_ha"],

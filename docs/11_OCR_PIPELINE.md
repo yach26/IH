@@ -55,3 +55,15 @@ extracted = {
 - [x] Only confirmed values update the twin
 - [x] Event emission after successful update
 - [x] Graceful fallback when OCR fails completely (manual entry form)
+
+### Verified live over HTTP (Phase 4.1, 2026-09-27)
+
+All six items above are now backed by a `TestClient`-based HTTP test in
+`agrotwin_api/tests/test_ocr_pipeline.py`, not just unit-level function calls:
+- `test_real_easyocr_image_extraction` — real EasyOCR run on real image pixels.
+- `test_field_upload_and_confirm_flow` — full upload → confirm → `soil_tests` write,
+  over live HTTP.
+- `test_corrupt_image_upload_falls_back_to_manual_entry_live` — a genuinely broken
+  PNG uploaded over live HTTP returns `status: "OCR_FAILED"` (200, not a 500) with
+  every field's `value: null`, and confirms `soil_tests` is untouched since nothing
+  was confirmed — the graceful-fallback-to-manual-entry contract holds end-to-end.

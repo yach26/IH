@@ -131,9 +131,24 @@ def get_twin(field_id: str, conn: sqlite3.Connection = Depends(get_conn)):
     if alerts_list:
         first_alert = alerts_list[0]
         active_alert = {
-            "title": first_alert.get("type", "Alert"),
-            "description": json.dumps(first_alert.get("payload", {}))
+            "title": first_alert.get("alert_type", "Alert"),
+            "description": first_alert.get("message", ""),
         }
+
+    # Latest weather-related event for this field (real payload, not a stub),
+    # so the weather widget reflects an injected/real HEAVY_RAIN_ALERT / WEATHER_FORECAST_CHANGED.
+    weather_event = conn.execute(
+        """SELECT payload FROM events WHERE field_id = ?
+           AND event_type IN ('HEAVY_RAIN_ALERT', 'WEATHER_FORECAST_CHANGED')
+           ORDER BY created_at DESC LIMIT 1""",
+        (row["field_id"],),
+    ).fetchone()
+    weather_payload = {}
+    if weather_event and weather_event["payload"]:
+        try:
+            weather_payload = json.loads(weather_event["payload"])
+        except json.JSONDecodeError:
+            weather_payload = {}
 
     # Derive soil health score: weighted average of N/P/K sufficiency vs typical sugarcane needs
     n_val = soil["n_kg_ha"] if soil else 0
@@ -183,9 +198,14 @@ def get_twin(field_id: str, conn: sqlite3.Connection = Depends(get_conn)):
         "growthStageRaw": current_stage_raw,
         "stageSequence": stages,
         "area_ha": dict(row).get("area_ha") or 0.0,
+        "soilType": dict(row).get("soil_type"),
         "lat": dict(row).get("lat") or 16.705,
         "lon": dict(row).get("lon") or 74.2433,
         "location": f"{dict(row).get('lat', 16.705)}, {dict(row).get('lon', 74.2433)}",
+        # A field with no soil_tests row has never had a soil report submitted —
+        # the frontend must gate the dashboard behind this, not show 0-valued
+        # nutrients as if they were a real (deficient) reading.
+        "hasSoilTest": soil is not None,
         "soilHealthScore": soil_health_score,
         "soilDetail": {
             "ph": round(ph_val, 2) if ph_val else None,
@@ -200,19 +220,38 @@ def get_twin(field_id: str, conn: sqlite3.Connection = Depends(get_conn)):
             "k": { "current": k_val, "target": 170, "unit": "kg/ha" }
         },
         "currentPlan": {
-            "nextAction": plan.get("what", "Awaiting plan") if plan else "Awaiting plan",
+            # `plan` (the persisted proof) sets what/when/why/how_much to an explicit
+            # None (not a missing key) when status == ABSTAIN — so `.get(key, default)`
+            # does NOT fall back to `default` in that case. Every lookup below must
+            # guard with `or {}`/`or default` against that explicit None, not just a
+            # missing key, or this 500s on any ABSTAINed field.
+            "nextAction": (plan.get("what") if plan else None) or "Awaiting plan",
             "fertilizerBreakdown": plan_detail,
             "quantity": f"DAP {plan_detail.get('DAP_kg_ha',0)} + Urea {plan_detail.get('Urea_kg_ha',0)} + MOP {plan_detail.get('MOP_kg_ha',0)} kg/ha" if plan_detail else "N/A",
-            "applicationWindow": plan.get("when", "N/A") if plan else "N/A",
-            "estimatedCost": round(plan.get("cost", 13242) if plan else 13242),
-            "confidence": plan.get("confidence", rec["confidence"] if rec else "N/A") if plan else "N/A",
-            "citation": plan.get("based_on", {}).get("citation", "") if plan else "",
-            "soilGap": plan.get("why", {}).get("gap", {}) if plan else {},
+            "applicationWindow": (plan.get("when") if plan else None) or "N/A",
+            # Real cost estimate lives under based_on.cost_estimate (an
+            # ENGINEERING_DEFAULT price-table estimate, never the source of
+            # kg/ha quantities) — `plan.get("cost")` was never a real key and
+            # always fell through to a fake hardcoded 13242.
+            "estimatedCost": (plan.get("based_on") or {}).get("cost_estimate") if plan else None,
+            "costCitation": (plan.get("based_on") or {}).get("cost_citation") if plan else None,
+            "confidence": (plan.get("confidence") if plan else None) or (rec["confidence"] if rec else "N/A"),
+            "citation": (plan.get("based_on") or {}).get("citation", "") if plan else "",
+            "soilGap": (plan.get("why") or {}).get("gap", {}) if plan else {},
+            # Doc 14 Safety/HITL: ABSTAIN/LOW-CONFIDENCE must be surfaced with itemized reasons.
+            "status": (plan.get("status") if plan else None) or "NO_DATA",
+            "reason": plan.get("reason") if plan else None,
+            "requiredActions": (plan.get("required_actions") if plan else None) or [],
+            "flags": (plan.get("flags") if plan else None) or [],
         },
         "weather": {
-            "rainfall_mm_next_7d": 17,  # from open-meteo via weather_agent
-            "heavy_rain_alert": False,
-            "condition": "Clear — suitable for fertilizer application",
+            "rainfall_mm_next_7d": weather_payload.get("rainfall_mm_next_7d", 17),
+            "heavy_rain_alert": weather_payload.get("heavy_rain_alert", False),
+            "condition": (
+                "Heavy rain expected — fertilizer application deferred"
+                if weather_payload.get("heavy_rain_alert")
+                else "Clear — suitable for fertilizer application"
+            ),
         },
         "activeAlert": active_alert
     }
@@ -617,13 +656,7 @@ def agronomist_override(
     body: OverrideRequest,
     conn: sqlite3.Connection = Depends(get_conn)
 ):
-    """
-    Agronomist overrides the plan.
-
-    NOTE (audit §4): doc 09 describes this route as /agronomist/override.
-    The actual path is /fields/{field_id}/override (here). The code is correct;
-    doc 09 has a path typo. Route kept as-is to avoid breaking existing tests.
-    """
+    """Agronomist overrides the plan."""
     row = _field_row(conn, field_id)
     now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
