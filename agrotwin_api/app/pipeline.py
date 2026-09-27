@@ -266,7 +266,8 @@ class RecommendationPipeline:
             # Enforce: quantities must match ledger heuristic if using heuristic
             ledger_qty = ledger_result.get("plan_kg_ha") or {}
             optimizer_dict = {
-                "status": "OK",
+                "status": optimizer_plan.meta.get("status", "OK"),
+                "flag": optimizer_plan.meta.get("flag", ""),
                 "plan_kg_ha": optimizer_plan.plan_kg_ha,
                 "total_kg_ha": optimizer_plan.total_kg_ha,
                 "cost_estimate": optimizer_plan.cost_estimate,
@@ -394,7 +395,7 @@ class RecommendationPipeline:
         rec_id = None
         if persist and "persist" in requested:
             agents_run.append("persist")
-            rec_id = self._persist(conn, proof, previous_plan=previous_plan if mode == "partial_replan" else None)
+            rec_id = self._persist(conn, proof, previous_plan=previous_plan)
             proof["recommendation_id"] = rec_id
             audit.append({"step": "persist", "recommendation_id": rec_id})
 

@@ -17,6 +17,8 @@ from ..core.events import Event
 from .schemas import (
     CropAssignRequest,
     EventIn,
+    FarmerCreateRequest,
+    FieldCreateRequest,
     RecommendRequest,
     RecommendationOut,
     SoilReportConfirmRequest,
@@ -429,6 +431,10 @@ def agronomist_override(
 ):
     """
     Agronomist overrides the plan.
+
+    NOTE (audit §4): doc 09 describes this route as /agronomist/override.
+    The actual path is /fields/{field_id}/override (here). The code is correct;
+    doc 09 has a path typo. Route kept as-is to avoid breaking existing tests.
     """
     row = _field_row(conn, field_id)
     now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
@@ -475,3 +481,84 @@ def agronomist_override(
 
     return {"status": "success", "new_recommendation_id": new_rec_id}
 
+
+@router.post("/farmers", status_code=201)
+def create_farmer(
+    body: FarmerCreateRequest,
+    conn=Depends(get_conn),
+):
+    """
+    Create a new farmer record.
+    region_id must reference an existing row in the regions table.
+    """
+    region = conn.execute(
+        "SELECT region_id FROM regions WHERE region_id = ?", (body.region_id,)
+    ).fetchone()
+    if region is None:
+        raise HTTPException(status_code=400, detail=f"region_id {body.region_id} not found")
+
+    cur = conn.cursor()
+    cur.execute(
+        """INSERT INTO farmers (region_id, full_name, mobile, preferred_lang)
+           VALUES (?, ?, ?, ?)""",
+        (body.region_id, body.full_name, body.mobile, body.preferred_lang),
+    )
+    conn.commit()
+    farmer_id = cur.lastrowid
+    return {"status": "created", "farmer_id": farmer_id}
+
+
+@router.post("/fields", status_code=201)
+def create_field(
+    body: FieldCreateRequest,
+    conn=Depends(get_conn),
+):
+    """
+    Create a new field.
+    region_id and district_id must reference existing rows.
+    field_code must be unique if supplied.
+    After creation use POST /fields/{id}/crop to assign a crop,
+    and POST /fields/{id}/soil-report/confirm to add a soil test,
+    before calling POST /fields/{id}/recommend.
+    """
+    if conn.execute(
+        "SELECT 1 FROM regions WHERE region_id = ?", (body.region_id,)
+    ).fetchone() is None:
+        raise HTTPException(status_code=400, detail=f"region_id {body.region_id} not found")
+    if conn.execute(
+        "SELECT 1 FROM districts WHERE district_id = ?", (body.district_id,)
+    ).fetchone() is None:
+        raise HTTPException(status_code=400, detail=f"district_id {body.district_id} not found")
+
+    cur = conn.cursor()
+    cur.execute(
+        """INSERT INTO fields
+           (region_id, district_id, taluka_id, farmer_id, field_code,
+            area_ha, soil_type, irrigation_type, lat, lon, is_synthetic)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            body.region_id,
+            body.district_id,
+            body.taluka_id,
+            body.farmer_id,
+            body.field_code,
+            body.area_ha,
+            body.soil_type,
+            body.irrigation_type,
+            body.lat,
+            body.lon,
+            False,   # is_synthetic: real farmer-created field
+        ),
+    )
+    conn.commit()
+    field_id = cur.lastrowid
+    return {
+        "status": "created",
+        "field_id": field_id,
+        "field_code": body.field_code,
+        "next_steps": [
+            f"POST /fields/{field_id}/crop   — assign active crop",
+            f"POST /fields/{field_id}/soil-report/confirm — add soil test",
+            f"POST /fields/{field_id}/recommend — generate recommendation",
+        ],
+    }
