@@ -173,7 +173,7 @@ def get_db_connection() -> Any:
                 "psycopg is required when DATABASE_URL is set. Run: pip install psycopg[binary]"
             ) from e
     else:
-        conn = sqlite3.connect(os.environ.get("AGROTWIN_DB", AGROTWIN_DB))
+        conn = sqlite3.connect(os.environ.get("AGROTWIN_DB", AGROTWIN_DB), check_same_thread=False)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys = ON")
         return conn

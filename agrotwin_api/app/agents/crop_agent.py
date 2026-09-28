@@ -117,4 +117,4 @@ def resolve_dynamic_stage(conn: sqlite3.Connection, crop_id: int, sowing_date_st
         if e["days_after_planting_min"] <= days <= e["days_after_planting_max"]:
             return {"stage_name": e["stage_name"], "days_after_planting": days}
     last = entries[-1]
-    return {"stage_name": last["stage_name"], "days_after_planting": days}
+    return {"stage_name": last["stage_name"], "days_after_planting": days} if days > last["days_after_planting_max"] else None

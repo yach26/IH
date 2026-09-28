@@ -3,8 +3,7 @@
  * Every function here calls a real endpoint — no fabricated data lives in this file.
  */
 
-export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+export const API_BASE_URL = "/api/backend";
 
 export class ApiError extends Error {
   status: number;
@@ -60,6 +59,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 // ─── Types (mirroring real response shapes from routes.py) ───────────────────
 
 export interface FieldSummary {
+  field_id: number;
+  is_demo?: boolean;
+  soil_health_score?: number | null;
   field_code: string;
   area_ha: number | null;
   lat: number | null;
@@ -93,6 +95,9 @@ export interface TwinCurrentPlan {
 }
 
 export interface TwinResponse {
+  proof: RecommendationOut | null;
+  nutrientBasis: string;
+  conversionSource: string;
   fieldId: string;
   crop: string;
   growthStage: string;
@@ -124,23 +129,33 @@ export interface TwinResponse {
 }
 
 export interface WhatIfPlanSide {
-  fertilizer: string;
-  rainfall: string;
-  yieldBand: string;
+  quantities: Record<string, number>;
   confidence: string;
+  status: string;
   cost: number | null;
-  modelSignals: {
-    growthStage: string;
-    vigor: string;
-    nutrientSufficiency: string;
-    waterStress: string;
-  };
+  costCurrency: string;
+  costCitation: string;
+  applicationWindow: string | null;
+  rainfallMm: number | null;
+  nutrientsSupplied: Record<string, number>;
+  gap: Record<string, number>;
+  excess: Record<string, number>;
+  shortfall: Record<string, number>;
+  validation: { is_valid: boolean; warnings: string[]; blocking_issues: string[] };
+  sustainabilityNotes: string[];
 }
-
 export interface WhatIfResponse {
-  crop: string;
-  original: WhatIfPlanSide;
-  simulated: WhatIfPlanSide;
+  fieldId: string;
+  crop: string | null;
+  status: 'SIMULATION' | 'NO_DATA' | 'ABSTAIN';
+  reason: string | null;
+  requiredActions: string[];
+  original: WhatIfPlanSide | null;
+  simulated: WhatIfPlanSide | null;
+  deltaCost: number | null;
+  deltaYield: null;
+  yieldReason: string;
+  notes: string[];
 }
 
 export interface Alert {
@@ -171,6 +186,8 @@ export interface SoilReportUploadResponse {
 }
 
 export interface SoilTestConfirmInput {
+  p_basis?: "P" | "P2O5";
+  k_basis?: "K" | "K2O";
   n_kg_ha?: number | null;
   p_kg_ha?: number | null;
   k_kg_ha?: number | null;
@@ -182,6 +199,12 @@ export interface SoilTestConfirmInput {
 }
 
 export interface RecommendationOut {
+  why?: { soil?: string; crop?: string; weather?: string; gap?: Record<string, number>; required?: Record<string, number>; normalized_soil?: Record<string, number>; history?: ApplicationCredit | null } | null;
+  based_on?: { farm_data?: string[]; evidence?: EvidenceItem[]; citation?: string | null; cost_estimate?: number | null; cost_currency?: string; cost_citation?: string; application_history?: ApplicationCredit | null; conversion_source?: string } | null;
+  ledger?: { normalized_soil?: Record<string, number>; required?: Record<string, number>; gap?: Record<string, number>; application_history?: ApplicationCredit; nutrient_units?: string };
+  validation?: { is_valid: boolean; warnings: string[]; blocking_issues: string[] } | null;
+  data_quality?: Record<string, boolean>;
+  weather_context?: { status?: string; source?: string | null; rainfall_mm_next_7d?: number | null; flags?: string[] };
   status: string;
   what: string | null;
   how_much: Record<string, number> | null;
@@ -193,10 +216,26 @@ export interface RecommendationOut {
   [key: string]: unknown;
 }
 
+export interface EvidenceItem { source_file?: string; citation?: string; excerpt?: string; content?: string; confidence?: string; score?: number; }
+export interface ApplicationCredit {
+  status: string; credits_kg_ha: Record<string, number> | null; source?: string | null; reason?: string;
+  assumptions?: string[]; applications?: { application_id: number; application_date: string; product: string; status: string; credits_kg_ha?: Record<string, number> }[];
+}
+export interface FertilizerApplication { application_id: number; application_date: string; product_code: string; quantity_kg_ha: number; notes: string | null; }
+export function getApplications(fieldId: string): Promise<{ status: string; applications: FertilizerApplication[] }> {
+  return request(`/fields/${encodeURIComponent(fieldId)}/applications`);
+}
+export function getFertilizerProducts(): Promise<{ product_code: string; product_name: string }[]> {
+  return request("/fertilizer-products");
+}
+export function recordApplication(fieldId: string, body: { product_code: string; application_date: string; quantity_kg_ha: number; notes?: string }): Promise<{status: string; application_id: number}> {
+  return request(`/fields/${encodeURIComponent(fieldId)}/applications`, {method: "POST", body: JSON.stringify(body)});
+}
+
 // ─── API functions ─────────────────────────────────────────────────────────
 
-export function getFields(): Promise<FieldSummary[]> {
-  return request<FieldSummary[]>("/fields");
+export function getFields(demo = false): Promise<FieldSummary[]> {
+  return request<FieldSummary[]>(demo ? "/fields?demo=true" : "/fields");
 }
 
 export interface OnboardingOptions {

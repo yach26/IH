@@ -18,6 +18,7 @@ import json
 import os
 import re
 import sqlite3
+import uuid
 from datetime import date, datetime, timezone
 from typing import Any
 
@@ -27,7 +28,7 @@ from . import soil_agent
 from ..db import _json_load
 
 CONFIDENCE_REVIEW_THRESHOLD = 0.85
-UPLOAD_DIR = os.path.abspath(
+UPLOAD_DIR = os.environ.get("AGROTWIN_UPLOADS") or os.path.abspath(
     os.path.join(os.path.dirname(__file__), "..", "..", "uploads", "soil_reports")
 )
 
@@ -101,7 +102,7 @@ def extract_from_bytes(filename: str, data: bytes) -> tuple[dict[str, dict[str, 
         return extracted, engine
     except Exception:
         # Last resort fallback: treat as text so tests/fixtures work
-        text = data.decode("utf-8", errors="replace")
+        text = data.decode("utf-8", errors="replace") if os.path.splitext(filename)[1].lower() in (".txt", ".csv", ".md") else ""
         extracted = extract_from_text(text)
         if all(v["value"] is None for v in extracted.values()):
             for k in extracted:
@@ -141,7 +142,7 @@ def save_original_file(field_id: int, filename: str, data: bytes) -> str:
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     safe = os.path.basename(filename) or "report.txt"
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    path = os.path.join(UPLOAD_DIR, f"{field_id}_{stamp}_{safe}")
+    path = os.path.join(UPLOAD_DIR, f"{field_id}_{stamp}_{uuid.uuid4().hex}_{safe}")
     with open(path, "wb") as f:
         f.write(data)
     return path

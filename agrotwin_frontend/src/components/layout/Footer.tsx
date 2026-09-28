@@ -17,8 +17,8 @@ export default function Footer() {
       <div className="tricolor-bar" />
       <div className="container mx-auto px-4 py-6 grid grid-cols-1 md:grid-cols-3 gap-6">
         <div>
-          <p className="font-serif font-bold text-foreground mb-1">AgroTwin AI — Digital Krishi Twin</p>
-          <p>Department of Agriculture / Government of Maharashtra (Pilot)</p>
+          <p className="font-serif font-bold text-foreground mb-1">Kisan Saathi — Digital Krishi Twin</p>
+          <p>Farm nutrient decision support · Kolhapur pilot</p>
           <p className="mt-2">Helpline: <a href="tel:18001801551" className="underline hover:text-primary">1800-180-1551</a> (Kisan Call Centre)</p>
           <p>Last updated: {lastUpdated}</p>
         </div>

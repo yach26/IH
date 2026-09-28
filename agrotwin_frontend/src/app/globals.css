@@ -3,14 +3,14 @@
 :root {
   /* Government-portal palette: institutional green + white + muted saffron
      accent, near-black text for AA contrast. Sharp corners, not rounded SaaS. */
-  --background: #f4f6f3;
+  --background: #FAFAFA;
   --foreground: #1a1a1a;
 
   --surface: #ffffff;
   --surface-hover: #eef2ec;
 
-  --primary: #0b5e2c;
-  --primary-hover: #08431f;
+  --primary: #15803D;
+  --primary-hover: #166534;
 
   --accent: #b45f06;       /* muted saffron/amber — sparing use for alerts/emphasis */
   --accent-bg: #fdf3e7;

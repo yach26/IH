@@ -28,14 +28,14 @@ export default function LandingNav() {
   ];
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-[#e5e0d8] bg-[#FDFBF7]/90 backdrop-blur-md">
+    <header className="sticky top-0 z-50 w-full border-b border-[#e5e0d8] bg-[#FAFAFA]/90 backdrop-blur-md">
       <div className="container mx-auto px-6 h-20 flex items-center justify-between">
         <div className="flex items-center space-x-12">
           <Link href="/" className="flex flex-col group">
-            <span className="text-xl font-semibold text-[#0F4D35] tracking-tight group-hover:opacity-80 transition-opacity">
-              AgroTwin AI
+            <span className="text-xl font-semibold text-[#15803D] tracking-tight group-hover:opacity-80 transition-opacity">
+              Kisan Saathi
             </span>
-            <span className="text-[10px] text-[#0F4D35]/70 uppercase tracking-widest font-medium">
+            <span className="text-[10px] text-[#15803D]/70 uppercase tracking-widest font-medium">
               Sustainable Fertilizer Support
             </span>
           </Link>
@@ -46,7 +46,7 @@ export default function LandingNav() {
                 key={anchor}
                 href={`#${anchor}`}
                 onClick={(e) => scrollToAnchor(e, anchor)}
-                className="relative py-1 hover:text-[#0F4D35] transition-colors duration-200 after:absolute after:bottom-0 after:left-0 after:h-[2px] after:w-0 after:bg-[#0F4D35] after:transition-[width] after:duration-300 hover:after:w-full"
+                className="relative py-1 hover:text-[#15803D] transition-colors duration-200 after:absolute after:bottom-0 after:left-0 after:h-[2px] after:w-0 after:bg-[#15803D] after:transition-[width] after:duration-300 hover:after:w-full"
               >
                 {label}
               </a>
@@ -58,7 +58,7 @@ export default function LandingNav() {
           <LanguageSwitcher />
           <button
             onClick={() => router.push("/dashboard")}
-            className="px-5 py-2.5 rounded-sm bg-[#0F4D35] text-[#FDFBF7] text-sm font-medium hover:bg-[#0F4D35]/90 active:scale-95 transition-all shadow-sm"
+            className="px-5 py-2.5 rounded-sm bg-[#15803D] text-[#FAFAFA] text-sm font-medium hover:bg-[#15803D]/90 active:scale-95 transition-all shadow-sm"
           >
             {t("nav.openDashboard")}
           </button>

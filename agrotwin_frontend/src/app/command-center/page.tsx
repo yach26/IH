@@ -57,7 +57,7 @@ export default function CommandCenterPage() {
         setLoading(false);
       })
       .catch((err) => {
-        setError(err instanceof ApiError ? err.message : "Could not reach the AgroTwin backend.");
+        setError(err instanceof ApiError ? err.message : "Could not reach the Kisan Saathi backend.");
         setLoading(false);
       });
   }, []);

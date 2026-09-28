@@ -16,4 +16,4 @@ Residual nutrient availability is not a universal constant. No default recovery 
 
 Nutrient conversion source: FAO, *Crop production levels and fertilizer use*, Appendix Table 16, https://www.fao.org/4/aq348e/aq348e.pdf (P × 2.2919 = P2O5; K × 1.2046 = K2O). These are unit conversions, not crop-availability coefficients.
 
-Production authentication and real farm validation of the experimental yield model require separate deployment/data work. The audit explicitly permits documenting those limitations for the hackathon; no fabricated validation will be supplied.
+No authentication, login or signup is implemented, as explicitly requested. This remains a local demonstration with no ownership enforcement. Real farm validation of the experimental yield model remains unavailable; the simulator does not expose invented yield effects.

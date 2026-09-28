@@ -321,8 +321,8 @@ class TestWeatherAgent:
             def json(self):
                 return {
                     "daily": {
-                        "precipitation_sum": [1.0, 2.0],
-                        "precipitation_probability_max": [30, 40],
+                        "precipitation_sum": [1.0, 2.0, 0, 0, 0, 0, 0],
+                        "precipitation_probability_max": [30, 40, 0, 0, 0, 0, 0],
                     }
                 }
 

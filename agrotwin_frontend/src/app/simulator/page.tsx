@@ -1,743 +1,134 @@
 "use client";
 
-import React, { useState, useEffect, startTransition, Suspense } from "react";
-import { useSearchParams, useRouter, usePathname } from "next/navigation";
-import { simulateCrop } from "@/simulation/simulationEngine";
-import { CROPS } from "@/simulation/cropConfigs";
-import { CropVisualState } from "@/simulation/types";
-import { whatIf as apiWhatIf, getTwin } from "@/lib/api";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
+import { whatIf, recommend, type WhatIfResponse, type WhatIfPlanSide } from "@/lib/api";
 import { useFieldParam } from "@/lib/useFieldParam";
 import FieldOnboarding from "@/components/ui/FieldOnboarding";
 
-// ─── Sub-components ────────────────────────────────────────────────────────────
+const nutrients = ["N", "P2O5", "K2O"];
+const number = (value: number) => value.toLocaleString("en-IN", { maximumFractionDigits: 2 });
+const money = (value: number | null) => value === null ? "Not priced" : `INR ${number(value)}/ha`;
+const panel = "rounded-2xl border border-slate-200 bg-white p-5 md:p-6";
 
-// Parses a backend-formatted fertilizer string like "253.5 DAP_kg_ha, 77.6
-// UREA_kg_ha" into named quantities — never invents products, only reads the
-// real optimizer/ledger output the API already returned.
-function parseFertilizerString(s: string): { name: string; value: number }[] {
-  const matches = [...s.matchAll(/([\d.]+)\s+([A-Za-z_]+?)_?kg_ha/g)];
-  return matches.map((m) => ({ name: m[2].replace(/_/g, ' '), value: parseFloat(m[1]) }));
+function NutrientChart({ baseline, scenario }: { baseline: WhatIfPlanSide; scenario: WhatIfPlanSide }) {
+  return <section className={panel} aria-labelledby="nutrient-chart-title">
+    <h2 id="nutrient-chart-title" className="text-xl font-bold">Does the mix cover the remaining nutrient need?</h2>
+    <p className="mt-2 text-sm text-slate-600">Remaining need is the crop requirement after soil nutrients and supported application credits. All amounts are kg/ha, on the same N / P2O5 / K2O basis.</p>
+    <div className="mt-5 grid gap-6 md:grid-cols-3">{nutrients.map(n => {
+      const rows = [
+        { label: "Remaining need", amount: baseline.gap[n], color: "bg-slate-500" },
+        { label: "Baseline supplies", amount: baseline.nutrientsSupplied[n], color: "bg-emerald-700" },
+        { label: "Scenario supplies", amount: scenario.nutrientsSupplied[n], color: "bg-blue-600" },
+      ];
+      const max = Math.max(1, ...rows.map(r => r.amount));
+      return <figure key={n} className="min-w-0 space-y-3"><figcaption className="font-bold">{n}</figcaption>
+        {rows.map(row => <div key={row.label}><div className="flex justify-between gap-2 text-xs"><span>{row.label}</span><strong>{number(row.amount)}</strong></div><div className="mt-1 h-3 rounded bg-slate-100" aria-hidden="true"><div className={`h-3 rounded ${row.color}`} style={{width: `${row.amount / max * 100}%`}} /></div></div>)}
+        <p className="text-sm">Scenario excess: <strong>{number(scenario.excess[n])}</strong><br/>Scenario shortfall: <strong>{number(scenario.shortfall[n])}</strong></p>
+      </figure>;
+    })}</div>
+    <p className="mt-4 text-xs text-slate-500">Each nutrient uses its own scale. Values are calculated nutrient supply, not a prediction of plant uptake or yield.</p>
+  </section>;
 }
 
-function FertilizerComparison({
-  original,
-  simulated,
-}: {
-  original: string;
-  simulated: string;
-}) {
-  const orig = parseFertilizerString(original);
-  const sim = parseFertilizerString(simulated);
-  if (orig.length === 0 && sim.length === 0) {
-    // "N/A" from the backend is a real, valid answer — the field's soil
-    // already meets the RDF target so NO_FERTILIZER_NEEDED, not missing
-    // data. Say so instead of silently rendering nothing, which looked like
-    // the comparison had just failed to load.
-    if (original === 'N/A' && simulated === 'N/A') {
-      return (
-        <div className="bg-white rounded-md border border-[#e5e0d8] p-5 text-center">
-          <p className="text-xs font-bold uppercase tracking-wide text-gray-700 mb-1">Fertilizer Plan Comparison</p>
-          <p className="text-sm text-green-700">No fertilizer needed — soil already meets the target for this crop and stage.</p>
-        </div>
-      );
-    }
-    return null;
-  }
-  const names = Array.from(new Set([...orig.map((o) => o.name), ...sim.map((s) => s.name)]));
-
-  return (
-    <div className="bg-white rounded-md border border-[#e5e0d8] p-5">
-      <p className="text-xs font-bold uppercase tracking-wide text-gray-700 mb-4">Fertilizer Plan Comparison</p>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {names.map((name) => {
-          const o = orig.find((x) => x.name === name)?.value ?? 0;
-          const s = sim.find((x) => x.name === name)?.value ?? 0;
-          const delta = s - o;
-          return (
-            <div key={name} className="border border-gray-100 rounded-md p-3 text-center">
-              <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-2">{name}</div>
-              <div className="flex items-center justify-center gap-2">
-                <div>
-                  <div className="text-lg font-bold text-gray-400 line-through decoration-gray-300">{o}</div>
-                  <div className="text-[9px] text-gray-400">baseline</div>
-                </div>
-                <span className="text-gray-300">→</span>
-                <div>
-                  <div className={`text-3xl font-extrabold ${delta > 0 ? 'text-amber-600' : delta < 0 ? 'text-green-700' : 'text-gray-800'}`}>{s}</div>
-                  <div className="text-[9px] text-gray-400">kg/ha</div>
-                </div>
-              </div>
-              {delta !== 0 && (
-                <div className={`text-[10px] font-semibold mt-1 ${delta > 0 ? 'text-amber-600' : 'text-green-700'}`}>
-                  {delta > 0 ? '+' : ''}{Math.round(delta * 10) / 10} kg/ha
-                </div>
-              )}
-            </div>
-          );
-        })}
+function Report({ result }: { result: WhatIfResponse }) {
+  const baseline = result.original!;
+  const scenario = result.simulated!;
+  const issues = [...scenario.validation.blocking_issues, ...scenario.validation.warnings];
+  const products = [...new Set([...Object.keys(baseline.quantities), ...Object.keys(scenario.quantities)])];
+  const costChange = result.deltaCost;
+  return <div className="space-y-5" aria-label="Scenario comparison report">
+    <section className={panel}>
+      <p className="text-xs font-semibold uppercase tracking-wide text-emerald-800">Calculated comparison / {result.crop || "Selected crop"}</p>
+      <h2 className="mt-2 text-2xl font-bold">What changes in this scenario?</h2>
+      <p className="mt-2 text-slate-600">{costChange === null ? "A complete price is unavailable for this mix." : costChange === 0 ? "The product cost is unchanged from the baseline." : `This mix costs ${money(Math.abs(costChange))} ${costChange < 0 ? "less" : "more"} than the baseline.`} A lower cost alone does not make the mix agronomically suitable. Check the nutrient shortfalls and constraints below.</p>
+      <div className="mt-5 grid gap-3 sm:grid-cols-3">
+        <div className="rounded-xl bg-emerald-50 p-4"><h3 className="text-sm">Baseline product cost</h3><p className="mt-2 text-xl font-bold">{money(baseline.cost)}</p></div>
+        <div className="rounded-xl bg-blue-50 p-4"><h3 className="text-sm">Scenario product cost</h3><p className="mt-2 text-xl font-bold">{money(scenario.cost)}</p></div>
+        <div className="rounded-xl bg-slate-100 p-4"><h3 className="text-sm">Cost difference</h3><p className="mt-2 text-xl font-bold">{costChange === null ? "Unavailable" : `${costChange > 0 ? "+" : costChange < 0 ? "-" : ""}${money(Math.abs(costChange))}`}</p></div>
       </div>
-    </div>
-  );
-}
-
-function ResultChip({ label, color }: { label: string; color: "green" | "amber" | "red" | "blue" | "gray" }) {
-  const cls = {
-    green: "bg-green-100 text-green-700",
-    amber: "bg-amber-100 text-amber-700",
-    red: "bg-red-100 text-red-700",
-    blue: "bg-blue-100 text-blue-700",
-    gray: "bg-gray-100 text-gray-700",
-  }[color];
-  return <span className={`text-xs font-semibold px-2 py-0.5 rounded ${cls}`}>{label}</span>;
-}
-
-function SimSlider({
-  label,
-  value,
-  min,
-  max,
-  step = 1,
-  unit = "",
-  displayValue,
-  onChange,
-  disabled = false,
-}: {
-  label: string;
-  value: number;
-  min: number;
-  max: number;
-  step?: number;
-  unit?: string;
-  displayValue?: string;
-  onChange?: (v: number) => void;
-  disabled?: boolean;
-}) {
-  const pct = ((value - min) / (max - min)) * 100;
-  return (
-    <div className={disabled ? "opacity-50 pointer-events-none" : ""}>
-      <div className="flex items-center justify-between mb-1.5">
-        <label className="text-xs font-medium text-gray-700">{label}</label>
-        <span className="text-xs font-medium text-gray-900 bg-gray-50 border border-gray-200 px-2 py-0.5 rounded min-w-[52px] text-center">
-          {displayValue ?? `${value}${unit}`}
-        </span>
+    </section>
+    <NutrientChart baseline={baseline} scenario={scenario}/>
+    <section className={panel}>
+      <h2 className="text-xl font-bold">Product-by-product comparison</h2>
+      <div className="mt-4 overflow-x-auto"><table className="w-full text-left text-sm"><caption className="sr-only">Fertilizer quantities in kg/ha</caption>
+        <thead><tr className="border-b"><th className="py-3 pr-3">Product</th><th className="p-3">Baseline</th><th className="p-3">Scenario</th><th className="p-3">Change</th></tr></thead>
+        <tbody>{products.map(p => { const a = baseline.quantities[p] || 0, b = scenario.quantities[p] || 0; return <tr key={p} className="border-b"><th className="py-3 pr-3">{p.replace("_kg_ha", "")}</th><td className="p-3">{number(a)}</td><td className="p-3">{number(b)}</td><td className="p-3">{b > a ? "+" : ""}{number(b-a)}</td></tr>; })}</tbody>
+      </table></div><p className="mt-2 text-xs text-slate-600">All quantities in kg/ha. A zero mix means no fertilizer in this hypothetical comparison, not a recommendation to stop fertilizing.</p>
+    </section>
+    <section className={panel}>
+      <h2 className="text-xl font-bold">Constraints and rainfall precautions</h2>
+      <p className="mt-2 font-semibold">{scenario.validation.is_valid ? "No blocking constraint detected by the configured checks." : "This scenario fails a constraint check. Do not treat it as an application recommendation."}</p>
+      <p className="mt-2 text-sm">Baseline timing: {baseline.applicationWindow || "No validated window recorded."}</p>
+      <p className="mt-2 text-sm">Scenario seven-day rain: {scenario.rainfallMm == null ? "Unavailable" : `${number(scenario.rainfallMm)} mm`}. {scenario.applicationWindow}</p>
+      <ul className="mt-4 list-disc space-y-2 pl-5 text-sm">{[...new Set([...issues, ...scenario.sustainabilityNotes])].map(text => <li key={text}>{text}</li>)}</ul>
+    </section>
+    <details className={panel}><summary className="cursor-pointer font-semibold">Sources, confidence and limits of this report</summary>
+      <div className="mt-4 space-y-3 text-sm break-words">
+        <p>Saved recommendation confidence: {baseline.confidence}. Scenario confidence is not assessed: scaling quantities does not transfer the baseline confidence to this new mix.</p>
+        <p>{baseline.costCitation}</p><p>Formula: sum of product quantity (kg/ha) multiplied by its price (INR/kg). Both sides use the same price table; labour and transport are excluded.</p>
+        <p><strong>Yield effect is not calculated.</strong> {result.yieldReason}</p>
+        <p>Seasonal savings versus farmer practice cannot be calculated because the 47-farmer survey does not establish the quantity basis or season.</p>
+        <ul className="list-disc pl-5">{result.notes.map(note => <li key={note}>{note}</li>)}</ul>
       </div>
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(e) => onChange?.(Number(e.target.value))}
-        className="w-full h-1.5 rounded-full appearance-none cursor-pointer"
-        style={{
-          background: `linear-gradient(to right, #0F4D35 ${pct}%, #e2e8f0 ${pct}%)`,
-        }}
-      />
-      <div className="flex justify-between text-[10px] text-gray-400 mt-0.5">
-        <span>{min}{unit}</span>
-        <span>{max}{unit}</span>
-      </div>
-    </div>
-  );
+    </details>
+  </div>;
 }
 
-function SimSelect({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  options: string[];
-  onChange: (v: string) => void;
-}) {
-  return (
-    <div>
-      <label className="block text-xs font-medium text-gray-700 mb-1.5">{label}</label>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full text-xs font-medium text-gray-800 bg-white border border-gray-200 rounded-md px-3 py-2.5 appearance-none cursor-pointer focus:outline-none focus:ring-1 focus:ring-[#0F4D35]"
-        style={{
-          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`,
-          backgroundRepeat: "no-repeat",
-          backgroundPosition: "right 10px center",
-          paddingRight: "32px",
-        }}
-      >
-        {options.map((o) => (
-          <option key={o}>{o}</option>
-        ))}
-      </select>
-    </div>
-  );
-}
-
-function GrowthStageTimeline({
-  stages,
-  currentStage,
-  stageProgress = 0,
-}: {
-  stages: string[];
-  currentStage: string;
-  stageProgress?: number;
-}) {
-  const currentIdx = stages.indexOf(currentStage);
-  const progressPct = Math.max(0, Math.min(1, stageProgress)) * 100;
-
-  return (
-    <div className="flex items-start justify-between gap-1 overflow-x-auto pb-1 min-w-0">
-      {stages.map((stageName, i) => {
-        const isDone = i < currentIdx;
-        const isCurrent = i === currentIdx;
-        return (
-          <div key={stageName} className="flex flex-col items-center flex-1 min-w-0 relative">
-            {/* connector line — the segment leaving the CURRENT stage fills
-                proportionally to stageProgress, so moving the planting-shift
-                slider (or fertilizer/rainfall/irrigation, which shift the
-                simulated day) visibly animates even when the crop hasn't
-                crossed into the next named stage yet. */}
-            {i < stages.length - 1 && (
-              <div className="absolute top-3 left-1/2 w-full h-0.5 z-0 bg-gray-200 overflow-hidden">
-                <div
-                  className="h-full bg-[#0F4D35] transition-all duration-500"
-                  style={{ width: i < currentIdx ? "100%" : i === currentIdx ? `${progressPct}%` : "0%" }}
-                />
-              </div>
-            )}
-            {/* dot */}
-            <div
-              className={`relative z-10 w-6 h-6 rounded-full border-2 flex items-center justify-center mb-1.5 transition-all ${
-                isCurrent
-                  ? "border-[#0F4D35] bg-[#0F4D35] shadow-sm ring-2 ring-[#0F4D35]/20 animate-pulse"
-                  : isDone
-                  ? "border-[#0F4D35] bg-[#0F4D35]"
-                  : "border-gray-300 bg-white"
-              }`}
-            >
-              {isDone && (
-                <svg className="w-3 h-3 text-white" fill="currentColor" viewBox="0 0 20 20">
-                  <path
-                    fillRule="evenodd"
-                    d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-              )}
-              {isCurrent && <div className="w-2 h-2 bg-white rounded-full" />}
-            </div>
-            <span
-              className={`text-[9px] font-medium text-center leading-tight ${
-                isCurrent ? "text-[#0F4D35] font-semibold" : isDone ? "text-gray-600" : "text-gray-400"
-              }`}
-            >
-              {stageName}
-            </span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-// ─── Main Page ─────────────────────────────────────────────────────────────────
-// Every entry here must point at a field that is ACTUALLY that crop in the
-// backend — every one of REAL-001..008 is Sugarcane (verified against
-// GET /fields), so the old mapping sent the Banana/Cotton/Rice tabs to
-// mismatched Sugarcane fields: clicking them showed Sugarcane data under a
-// Banana/Cotton tab, or (Rice) a crop that has no record in this system at
-// all. Rice has no crop_id in the `crops` table — there is nothing real to
-// point it at, so it has no tab rather than a fake one.
-const CROP_TO_FIELD: Record<string, string> = {
-  sugarcane: 'REAL-001',
-  banana: 'FARM-de3b356b-1bfa-4806-aada-a1e0aa8944f4',
-  cotton: 'FARM-5df3a349-f1b8-4c0d-b362-f6ebe46e10c4',
-};
-
-function SimulatorContent({ initialCrop }: { initialCrop: string }) {
-  const searchParams = useSearchParams();
-  const router = useRouter();
-  const pathname = usePathname();
-  const fieldParam = searchParams.get('field');
-
-  const [activeCropId, setActiveCropId] = useState<string>(
-    initialCrop
-  );
-  // A ?field= that doesn't correspond to one of the 4 demo crop tabs is still
-  // the authoritative field to fetch — the crop tabs are a visual convenience,
-  // not the source of truth for which field is selected.
-  const [fieldOverride, setFieldOverride] = useState<string | null>(fieldParam);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const [iframeKey, setIframeKey] = useState(0);
-  const [realBaseline, setRealBaseline] = useState<number | null>(null);
-  const [realCitation, setRealCitation] = useState<string>('');
-  const [realFieldInfo, setRealFieldInfo] = useState<{ crop: string; stage: string; } | null>(null);
-  const [twinError, setTwinError] = useState<string | null>(null);
-
-  const activeFieldId = fieldOverride || fieldParam || '';
-
-  function selectCrop(cropId: string) {
-    setActiveCropId(cropId);
-    setFieldOverride(null);
-    const nextField = CROP_TO_FIELD[cropId];
-    const params = new URLSearchParams(searchParams.toString());
-    params.set('field', nextField);
-    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
-  }
-
-  // Fetch the real baseline from backend twin API whenever active field changes
+function FieldSimulator({ fieldId }: { fieldId: string }) {
+  const [delta, setDelta] = useState("0");
+  const [rain, setRain] = useState("");
+  const [result, setResult] = useState<WhatIfResponse | null>(null);
+  const [busy, setBusy] = useState(true);
+  const [error, setError] = useState("");
+  const [generationIssue, setGenerationIssue] = useState("");
   useEffect(() => {
-    getTwin(activeFieldId)
-      .then(data => {
-        setTwinError(null);
-        // Use the gap N as the required target to apply
-        const gap = data.currentPlan?.soilGap;
-        if (gap?.N != null) {
-          // Real recommended N gap to fill — this is the meaningful "baseline" for this field
-          setRealBaseline(Math.round(gap.N));
-        } else {
-          setRealBaseline(null);
-        }
-        setRealCitation(data.currentPlan?.citation || '');
-        setRealFieldInfo({ crop: data.crop, stage: data.growthStage });
-      })
-      .catch((err) => {
-        setTwinError(err instanceof Error ? err.message : 'Could not load field data');
-      });
-  }, [activeFieldId, activeCropId]);
-
-  // Inputs
-  const crop = CROPS[activeCropId];
-  const effectiveBaseline = realBaseline ?? crop.baselineFertilizer;
-  const [nKgHa, setNKgHa] = useState(crop.baselineFertilizer);
-  const [rainfallPct, setRainfallPct] = useState(0);
-  const [applicationTiming, setApplicationTiming] = useState<"Early" | "On time" | "Delayed">("On time");
-  const [irrigation, setIrrigation] = useState<"Low" | "Normal" | "High">("Normal");
-  const [plantingShift, setPlantingShift] = useState(0);
-
-  // Sync slider to real baseline once it arrives from the backend (intentional
-  // one-way sync from fetched data into local editable slider state, not a
-  // render-derivable value — eslint-plugin-react-hooks flags this pattern by
-  // default even when correct).
-  /* eslint-disable react-hooks/set-state-in-effect */
-  useEffect(() => {
-    if (realBaseline !== null) setNKgHa(realBaseline);
-  }, [realBaseline]);
-  /* eslint-enable react-hooks/set-state-in-effect */
-
-  // Derived state: now fetched from backend with local fallback
-  const [result, setResult] = useState<CropVisualState>(() => simulateCrop({
-    cropId: activeCropId,
-    fertilizer: CROPS[activeCropId].baselineFertilizer,
-    rainfallChange: 0,
-    irrigation: "Normal",
-    applicationTiming: "On time",
-    plantingShift: 0,
-  }));
-  const [isSimulating, setIsSimulating] = useState(false);
-  const [planUnavailable, setPlanUnavailable] = useState(false);
-  const [planComparison, setPlanComparison] = useState<{ original: string; simulated: string } | null>(null);
-  const [scenarioNote, setScenarioNote] = useState<string>('');
-
-  // Two independent things happen on every slider change, and neither
-  // fabricates the other's data:
-  //  1. The real fertilizer/cost delta comes ONLY from the backend
-  //     /what-if pipeline (ledger + optimizer), which only understands
-  //     fertilizer_delta_pct and rainfall_mm — irrigation/timing/planting
-  //     shift are not modeled there and are never sent to it.
-  //  2. The on-screen crop-condition visual (vigor/leaf/water/nutrient
-  //     stress, growth stage) is a local, clearly-labelled structural
-  //     simulation (`simulateCrop`) that DOES respond to all five inputs —
-  //     it was previously wired only as an error fallback, so moving the
-  //     irrigation / timing / planting-shift sliders visibly did nothing.
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setIsSimulating(true);
-
-      // 1. Local visual simulation — always runs, uses every input.
-      setResult(simulateCrop({
-        cropId: activeCropId,
-        fertilizer: nKgHa,
-        rainfallChange: rainfallPct,
-        irrigation: irrigation as "Low" | "Normal" | "High",
-        applicationTiming: applicationTiming as "Early" | "On time" | "Delayed",
-        plantingShift,
-      }));
-
-      // 2. Real backend plan delta — fertilizer + rainfall only.
-      const baseline = effectiveBaseline;
-      // A field whose real N gap is already 0 (soil test shows enough N —
-      // a genuine "no fertilizer needed" state, not missing data) makes this
-      // a division by zero. NaN/Infinity both serialize to JSON `null` via
-      // JSON.stringify, so the backend silently got no delta at all and the
-      // slider looked completely inert for these fields. Clamp to the
-      // schema's actual bounds (WhatIfRequest.fertilizer_delta_pct: -100..500)
-      // instead of sending a value that can't survive being sent.
-      const deltaPct = baseline > 0
-        ? Math.max(-100, Math.min(500, ((nKgHa - baseline) / baseline) * 100))
-        : (nKgHa > 0 ? 500 : 0);
-      apiWhatIf(activeFieldId, {
-        fertilizer_delta_pct: deltaPct,
-        rainfall_mm: rainfallPct > 0 ? 60 : (rainfallPct < 0 ? 0 : 20),
-      })
-        .then((data) => {
-          const sim = data.simulated;
-          setPlanUnavailable(false);
-          setPlanComparison({ original: data.original.fertilizer, simulated: data.simulated.fertilizer });
-          // A labelled scenario estimate, not a validated AI yield prediction —
-          // never claim model-backed accuracy the backend doesn't have.
-          setScenarioNote(`Scenario estimate: ${sim.yieldBand}. Confidence: ${sim.confidence}. ${sim.cost != null ? `Projected cost: ₹${sim.cost}.` : 'Cost not available.'}`);
-          setIsSimulating(false);
-        })
-        .catch((e) => {
-          console.error("Backend what-if call failed:", e);
-          setPlanUnavailable(true);
-          setPlanComparison(null);
-          setScenarioNote('');
-          setIsSimulating(false);
-        });
-    }, 400); // 400ms debounce
-    return () => clearTimeout(handler);
-  }, [activeCropId, activeFieldId, effectiveBaseline, nKgHa, rainfallPct, irrigation, applicationTiming, plantingShift]);
-
-  // Reset inputs when crop changes
-  useEffect(() => {
-    startTransition(() => {
-      setNKgHa(CROPS[activeCropId].baselineFertilizer);
-      setRainfallPct(0);
-      setApplicationTiming("On time");
-      setIrrigation("Normal");
-      setPlantingShift(0);
-      setIframeKey((k) => k + 1);
-    });
-  }, [activeCropId]);
-
-  function handleReset() {
-    setNKgHa(effectiveBaseline);
-    setRainfallPct(0);
-    setApplicationTiming("On time");
-    setIrrigation("Normal");
-    setPlantingShift(0);
-  }
-
-  const getStatusColor = (val: string, reverse = false): "green" | "amber" | "red" | "gray" => {
-    const isGood = reverse
-      ? ["Low", "Healthy", "Excellent"].includes(val)
-      : ["Good", "Healthy", "Excellent"].includes(val);
-    const isBad = reverse
-      ? ["High", "Severe", "High Stress", "Wilted"].includes(val)
-      : ["Poor", "Severe", "High Stress", "Wilted"].includes(val);
-    
-    if (isGood) return "green";
-    if (isBad) return "red";
-    return "amber";
-  };
-
-  return (
-    <div className="min-h-screen bg-[#FDFBF7] font-sans">
-      {/* ── Page header ── */}
-      <div className="bg-white border-b border-[#e5e0d8] px-6 py-5">
-        <div className="max-w-[1400px] mx-auto flex items-start justify-between gap-6">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-[#0F4D35]">
-                What-If Simulator
-              </p>
-              <span className="px-2 py-0.5 bg-gray-100 text-gray-500 text-[9px] rounded font-medium border border-gray-200">
-                Interactive visual simulation
-              </span>
-              {realFieldInfo && (
-                <span className="px-2 py-0.5 bg-green-50 text-green-700 text-[9px] rounded font-medium border border-green-200">
-                  Live · {realFieldInfo.crop} · {realFieldInfo.stage} · {activeFieldId}
-                </span>
-              )}
-              {twinError && (
-                <span className="px-2 py-0.5 bg-red-50 text-red-700 text-[9px] rounded font-medium border border-red-200">
-                  ⚠ Could not load field data: {twinError}
-                </span>
-              )}
-            </div>
-            <h1 className="text-2xl md:text-3xl font-bold text-gray-900 leading-tight font-serif">
-              See how a change can affect your crop.
-            </h1>
-            <p className="text-sm text-gray-500 mt-1 max-w-2xl">
-              Adjust field conditions and observe the simulated crop response before making a decision.
-              {realCitation && <span className="block text-[10px] text-gray-400 italic mt-1">Baseline from: {realCitation}</span>}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* ── Fertilizer plan comparison — the most visually obvious delta on screen ── */}
-      {planComparison && (
-        <div className="max-w-[1400px] mx-auto px-4 md:px-6 pt-4">
-          <FertilizerComparison original={planComparison.original} simulated={planComparison.simulated} />
-        </div>
-      )}
-
-      {/* ── Crop selector ── */}
-      <div className="bg-[#FDFBF7] px-6 py-4">
-        <div className="max-w-[1400px] mx-auto flex items-center justify-between gap-4 flex-wrap">
-          <div className="flex items-center gap-2 overflow-x-auto pb-1">
-            {Object.values(CROPS).filter((c) => CROP_TO_FIELD[c.id]).map((c) => (
-              <button
-                key={c.id}
-                onClick={() => selectCrop(c.id)}
-                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-sm text-sm font-medium border transition-colors whitespace-nowrap ${
-                  activeCropId === c.id
-                    ? "bg-[#0F4D35] text-white border-[#0F4D35]"
-                    : "bg-white text-gray-600 border-gray-200 hover:border-[#0F4D35]/40 hover:text-[#0F4D35]"
-                }`}
-              >
-                <span className="text-base">{c.icon}</span>
-                {c.name}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* ── Main 3-column layout ── */}
-      <div className="max-w-[1400px] mx-auto px-4 md:px-6 pb-12 grid grid-cols-1 lg:grid-cols-[300px_1fr_320px] gap-6">
-
-        {/* ── LEFT: Simulation Inputs ── */}
-        <aside className="flex flex-col gap-4">
-          <div className="bg-white rounded-md border border-[#e5e0d8] p-5">
-            <div className="flex items-center justify-between mb-6">
-              <span className="font-semibold text-gray-800 text-sm">Simulation Inputs</span>
-              <button
-                onClick={handleReset}
-                className="flex items-center gap-1 text-[11px] font-medium text-gray-500 hover:text-[#0F4D35] transition-colors"
-              >
-                Reset
-              </button>
-            </div>
-
-            <div className="space-y-6">
-              <SimSlider
-                label="Fertilizer (Nitrogen)"
-                value={nKgHa}
-                min={0}
-                max={150}
-                step={5}
-                displayValue={`${nKgHa} kg/ha`}
-                onChange={setNKgHa}
-              />
-              <SimSlider
-                label="Expected Rainfall Change"
-                value={rainfallPct}
-                min={-50}
-                max={50}
-                step={5}
-                displayValue={`${rainfallPct > 0 ? "+" : ""}${rainfallPct} %`}
-                onChange={setRainfallPct}
-              />
-              <SimSelect
-                label="Irrigation"
-                value={irrigation}
-                options={["Low", "Normal", "High"]}
-                onChange={(v) => setIrrigation(v as "Low" | "Normal" | "High")}
-              />
-              <SimSelect
-                label="Application Timing"
-                value={applicationTiming}
-                options={["Early", "On time", "Delayed"]}
-                onChange={(v) => setApplicationTiming(v as "Early" | "On time" | "Delayed")}
-              />
-              <SimSlider
-                label="Planting Date Shift"
-                value={plantingShift}
-                min={-60}
-                max={90}
-                step={5}
-                displayValue={`${plantingShift > 0 ? "+" : ""}${plantingShift} days`}
-                onChange={setPlantingShift}
-              />
-            </div>
-          </div>
-        </aside>
-
-        {/* ── CENTER: 3D Model viewer + timeline ── */}
-        <div className="flex flex-col gap-4 min-w-0">
-          <div className="bg-white rounded-md border border-[#e5e0d8] overflow-hidden flex flex-col h-[460px]">
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[#e5e0d8] bg-gray-50/50">
-              <div className="flex items-center gap-2">
-                <span className="text-lg">{crop.icon}</span>
-                <div>
-                  <p className="text-sm font-bold text-gray-900">{crop.name}</p>
-                  <p className="text-[10px] text-gray-500 font-medium">3D Growth Simulation</p>
-                </div>
-              </div>
-              {crop.has3D && (
-                <button
-                  onClick={() => setIsFullscreen(true)}
-                  className="text-xs font-medium text-gray-600 hover:text-[#0F4D35] px-2 py-1 transition-colors"
-                >
-                  Fullscreen
-                </button>
-              )}
-            </div>
-
-            <div className="relative flex-1 bg-gradient-to-b from-gray-50 to-gray-100/50">
-              {crop.has3D ? (
-                <iframe
-                  key={iframeKey}
-                  title={crop.sketchfabTitle}
-                  className="w-full h-full"
-                  frameBorder="0"
-                  allowFullScreen
-                  allow="autoplay; fullscreen; xr-spatial-tracking"
-                  src={`https://sketchfab.com/models/${crop.sketchfabId}/embed?autostart=1&ui_watermark=0&ui_infos=0&ui_stop=0`}
-                />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center">
-                  <p className="text-sm text-gray-400">3D Model unavailable. Using structural representation.</p>
-                </div>
-              )}
-              
-              {/* Subtle status overlay showing connection status */}
-              <div className="absolute top-3 left-3 bg-white/80 backdrop-blur-sm border border-white/50 px-2 py-1 rounded text-[9px] text-gray-500 font-medium">
-                Simulation state · Model connection pending
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-md border border-[#e5e0d8] p-5">
-            <p className="text-xs font-semibold text-gray-500 mb-4 uppercase tracking-wide">
-              Growth Stage Timeline
-            </p>
-            <GrowthStageTimeline stages={crop.stages} currentStage={result.stage} stageProgress={result.stageProgress} />
-          </div>
-        </div>
-
-        {/* ── RIGHT: Simulation Results ── */}
-        <aside className="flex flex-col gap-4">
-          <div className="bg-white rounded-md border border-[#e5e0d8] p-5 flex flex-col gap-5">
-            <div className="flex items-center gap-2 mb-1 border-b border-[#e5e0d8] pb-3">
-              <span className="font-bold text-gray-800 text-sm">Crop Condition</span>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-[10px] text-gray-500 font-medium uppercase tracking-wider mb-1">Current Stage</p>
-                <p className="text-sm font-semibold text-gray-900">{result.stage}</p>
-              </div>
-              <div>
-                <p className="text-[10px] text-gray-500 font-medium uppercase tracking-wider mb-1">Stage Progress</p>
-                <p className="text-sm font-semibold text-gray-900">{Math.round(result.stageProgress * 100)}%</p>
-              </div>
-            </div>
-
-            <div className="space-y-3 pt-2">
-              {[
-                { label: "Plant Vigor", val: result.vigor, rev: false },
-                { label: "Leaf Condition", val: result.leafCondition, rev: false },
-                { label: "Water Stress", val: result.waterStress, rev: true },
-                { label: "Nutrient Stress", val: result.nutrientStress, rev: true },
-              ].map(({ label, val, rev }) => (
-                <div key={label} className="flex items-center justify-between">
-                  <span className="text-xs text-gray-600 font-medium">{label}</span>
-                  <ResultChip label={val} color={getStatusColor(val, rev)} />
-                </div>
-              ))}
-            </div>
-            
-            <div className="mt-2 pt-4 border-t border-[#e5e0d8]">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-gray-800 font-bold">Overall Visual State</span>
-                  <ResultChip label={result.overallState} color={getStatusColor(result.overallState, true)} />
-                </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-md border border-[#e5e0d8] p-5">
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-bold text-gray-800">What changed?</p>
-              {planUnavailable && (
-                <span className="text-[9px] font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">
-                  Real plan unavailable — visual only
-                </span>
-              )}
-            </div>
-            <p className="text-[13px] text-gray-600 leading-relaxed mb-2">
-              {result.explanation}
-            </p>
-            {scenarioNote && (
-              <p className="text-[13px] text-gray-600 leading-relaxed pt-2 border-t border-[#e5e0d8]">
-                {scenarioNote}
-              </p>
-            )}
-          </div>
-        </aside>
-      </div>
-
-      {/* ── Fullscreen 3D overlay ── */}
-      {isFullscreen && crop.has3D && (
-        <div className="fixed inset-0 z-[200] bg-[#FDFBF7] flex flex-col">
-          <div className="flex items-center justify-between p-4 border-b border-[#e5e0d8] bg-white">
-            <div className="flex items-center gap-2">
-              <span className="text-lg">{crop.icon}</span>
-              <span className="text-sm font-bold text-gray-900">{crop.name}</span>
-            </div>
-            <button
-              onClick={() => setIsFullscreen(false)}
-              className="text-sm text-gray-600 hover:text-gray-900 font-medium"
-            >
-              Close
-            </button>
-          </div>
-          <div className="flex-1 w-full bg-gray-50">
-            <iframe
-              title={crop.sketchfabTitle}
-              className="w-full h-full"
-              frameBorder="0"
-              allowFullScreen
-              allow="autoplay; fullscreen; xr-spatial-tracking"
-              src={`https://sketchfab.com/models/${crop.sketchfabId}/embed?autostart=1&ui_watermark=0&ui_infos=0&ui_stop=0`}
-            />
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-export default function SimulatorPage() {
-  return (
-    <Suspense fallback={<div className="min-h-screen bg-[#FDFBF7] flex items-center justify-center text-sm text-gray-500">Loading…</div>}>
-      <SimulatorEntry />
-    </Suspense>
-  );
-}
-
-function SimulatorEntry() {
-  const { fieldId, setFieldId, fields, fieldsError } = useFieldParam();
-  if (!fieldId) return <FieldOnboarding fields={fields} fieldsError={fieldsError} onSelect={setFieldId} />;
-  return <SimulatorGate key={fieldId} fieldId={fieldId} />;
-}
-
-function SimulatorGate({ fieldId }: { fieldId: string }) {
-  const [state, setState] = useState<{ crop: string; ready: boolean } | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    const controller = new AbortController();
-    getTwin(fieldId, controller.signal).then(twin => {
-      // twin.crop is the backend's display name (e.g. "Cotton (Bt)"), not a
-      // clean code — strip any "(...)" suffix before matching it against
-      // the local CROPS config keys (rice/banana/cotton/sugarcane), or every
-      // crop whose display name isn't already lowercase-identical to its
-      // key (Cotton, in practice) would wrongly show "Simulation unavailable".
-      const cleanCrop = twin.crop.split('(')[0].trim().toLowerCase();
-      if (!controller.signal.aborted) setState({ crop: cleanCrop, ready: twin.hasSoilTest && !['NO_DATA', 'ABSTAIN'].includes(twin.currentPlan.status) });
-    }).catch(err => { if (!controller.signal.aborted) setError(err instanceof Error ? err.message : 'Could not load your field.'); });
-    return () => controller.abort();
+    let cancelled = false;
+    whatIf(fieldId, { fertilizer_delta_pct: 0 }).then(data => { if (!cancelled) setResult(data); })
+      .catch(err => { if (!cancelled) setError(err instanceof Error ? err.message : "Could not check the baseline."); })
+      .finally(() => { if (!cancelled) setBusy(false); });
+    return () => { cancelled = true; };
   }, [fieldId]);
-  if (state?.ready && CROPS[state.crop]) return <SimulatorContent initialCrop={state.crop} />;
-  return <main className="min-h-screen bg-gray-50 p-10 text-center">
-    <h1 className="text-xl font-bold">{error ? 'Field unavailable' : !state ? 'Loading your field…' : state.ready ? 'Simulation unavailable for this crop' : 'Complete your field first'}</h1>
-    <p className="my-4 text-gray-600">{error || 'The simulator needs confirmed soil data and a recommendation for your selected field.'}</p>
-    <Link className="text-green-800 underline" href={`/dashboard?field=${encodeURIComponent(fieldId)}`}>Continue to your field</Link>
+  async function compare(reset = false, generate = false) {
+    setBusy(true); setError(""); setGenerationIssue(""); setResult(null);
+    try {
+      if (generate) {
+        const proof = await recommend(fieldId);
+        if (proof.status === "ABSTAIN") setGenerationIssue(proof.reason || "More field information is required.");
+      }
+      setResult(await whatIf(fieldId, { fertilizer_delta_pct: reset ? 0 : Number(delta), ...(!reset && rain.trim() ? {rainfall_mm: Number(rain)} : {}) }));
+    } catch (err) { setError(err instanceof Error ? err.message : "Comparison failed. Please retry."); }
+    finally { setBusy(false); }
+  }
+  const ready = result?.status === "SIMULATION" && result.original && result.simulated;
+  return <main className="mx-auto max-w-5xl space-y-6 p-4 md:p-8">
+    <header><p className="text-sm font-semibold text-emerald-800">Field {fieldId}</p><h1 className="mt-2 text-3xl font-bold">Fertilizer scenario report</h1><p className="mt-3 text-slate-600">See how changing your saved fertilizer mix affects nutrient supply and product cost. This comparison does not record an application.</p><Link className="mt-3 inline-block underline" href={`/dashboard?field=${encodeURIComponent(fieldId)}`}>View field data and Proof Trace</Link></header>
+    <ol aria-label="How the comparison works" className="grid gap-3 text-sm sm:grid-cols-3">{["1. Confirm soil and crop", "2. Generate a baseline plan", "3. Compare nutrients and cost"].map(step => <li key={step} className="rounded-lg border bg-white p-3">{step}</li>)}</ol>
+    <form className={panel} onSubmit={e => { e.preventDefault(); void compare(); }}>
+      <fieldset disabled={busy} className="flex flex-wrap items-end gap-4 disabled:opacity-60">
+        <label className="grid gap-2 text-sm font-medium">Change all fertilizer quantities (%)<input className="rounded border p-3" type="number" min="-100" max="500" step="any" required value={delta} onChange={e => { setDelta(e.target.value); setResult(null); }} /></label>
+        <label className="grid gap-2 text-sm font-medium">Hypothetical seven-day rain (mm)<input className="rounded border p-3" placeholder="Use saved weather context" type="number" min="0" step="any" value={rain} onChange={e => { setRain(e.target.value); setResult(null); }} /></label>
+        <button className="rounded bg-emerald-800 px-5 py-3 text-white">Compare scenario</button>
+        <button type="button" className="rounded border px-4 py-3" onClick={() => { setDelta("0"); setRain(""); void compare(true); }}>Reset to baseline</button>
+      </fieldset><p className="mt-3 text-xs text-slate-600">For example, -20% compares 80% of each baseline product. Rainfall changes the precaution checks, not the nutrient quantities or a yield forecast.</p>
+    </form>
+    {busy && <p role="status">Preparing the comparison...</p>}
+    {error && <p role="alert" className="rounded border border-red-200 p-4 text-red-800">{error}</p>}
+    {!busy && result && !ready && <section className={`${panel} border-amber-300`}>
+      <h2 className="text-xl font-bold">A current baseline is needed</h2><p className="mt-3">{generationIssue || result.reason}</p>
+      <ul className="mt-3 list-disc space-y-2 pl-5 text-sm">{result.requiredActions.map(action => <li key={action}>{action}</li>)}</ul>
+      <button className="mt-5 rounded bg-emerald-800 px-5 py-3 text-white" onClick={() => void compare(false, true)}>Generate baseline and compare</button>
+      <p className="mt-2 text-xs text-slate-600">This saves a new recommendation from your current field data, then reruns the comparison. It does not record fertilizer application.</p>
+    </section>}
+    {!busy && ready && result && <Report result={result}/>}
+    {!busy && !error && !result && <p role="status">Inputs changed. Select Compare scenario to update the report.</p>}
   </main>;
 }
+function Simulator() {
+  const { fieldId, fields, fieldsError, fieldsLoaded, setFieldId } = useFieldParam();
+  if (!fieldsLoaded) return <p className="p-6" role="status">Loading your fields...</p>;
+  if (!fieldId) return <FieldOnboarding fields={fields} fieldsError={fieldsError} onSelect={setFieldId}/>;
+  const code = fields.find(field => field.field_code === fieldId || String(field.field_id) === fieldId)?.field_code || fieldId;
+  return <FieldSimulator key={code} fieldId={code}/>;
+}
+export default function SimulatorPage() { return <Suspense fallback={<p>Loading field...</p>}><Simulator/></Suspense>; }

@@ -31,18 +31,18 @@ LOG = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    LOG.info("AgroTwin API starting up...")
+    LOG.info("Kisan Saathi API starting up...")
     LOG.info("Database: %s", os.environ.get("DATABASE_URL", "SQLite"))
     register_all_handlers()
     get_monitoring_agent()
     get_bus()
-    LOG.info("AgroTwin API ready")
+    LOG.info("Kisan Saathi API ready")
     yield
-    LOG.info("AgroTwin API shutting down")
+    LOG.info("Kisan Saathi API shutting down")
 
 
 app = FastAPI(
-    title="AgroTwin AI",
+    title="Kisan Saathi",
     description=(
         "Proof-carrying fertilizer recommendations. "
         "kg/ha originate only from the Nutrient Ledger heuristic "

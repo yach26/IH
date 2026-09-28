@@ -16,15 +16,16 @@ DEFAULT_REGION_CONFIG: dict = {
         "unit": "per_kg",
         # Gap #8: no sourced fertilizer price table exists in the data pack.
         "citation": (
-            "ENGINEERING_DEFAULT market prices pending Gap #8 "
-            "(04_remaining_gaps.md — no fertilizer price table sourced). "
-            "Used only for a cost *estimate* on the proof object; never as "
-            "the source of kg/ha quantities."
+            "Static reference prices, not a current Kolhapur dealer quotation: "
+            "UREA INR 266.50/45 kg; DAP INR 1350/50 kg (IFFCO price list effective 2025-01-01, "
+            "https://iffco-public-assets.s3.ap-south-1.amazonaws.com/s3fs-public/2025-02/Issue-price-and-MRP-of-IFFCO-fertiliser.pdf). "
+            "MOP INR 36/kg is an ENGINEERING_DEFAULT planning assumption, not a verified market quote. "
+            "Product cost only; transport, labour and application costs excluded."
         ),
         "prices_inr_per_kg": {
-            "UREA": 6.0,
+            "UREA": 266.50 / 45,
             "DAP": 27.0,
-            "MOP": 20.0,
+            "MOP": 36.0,
             "SSP": 8.0,
             "SOP": 45.0,
             "AMMONIUM_SULPHATE": 12.0,

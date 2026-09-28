@@ -31,7 +31,7 @@ const notoSans = Noto_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "AgroTwin AI | Living Digital Twin",
+  title: "Kisan Saathi | Living Digital Twin",
   description: "Evidence-grounded farm digital twin for continuous nutrient monitoring and sustainable fertilizer optimization.",
 };
 

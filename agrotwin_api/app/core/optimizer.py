@@ -52,7 +52,7 @@ class Optimizer(Protocol):
         ...
 
 
-def estimate_cost(plan_kg_ha: dict[str, float], region_id: str | None = None) -> tuple[float, str, str]:
+def estimate_cost(plan_kg_ha: dict[str, float], region_id: str | None = None) -> tuple[float | None, str, str]:
     cfg = load_region_config(region_id)
     prices = cfg["cost_model"]["prices_inr_per_kg"]
     citation = cfg["cost_model"]["citation"]
@@ -63,6 +63,8 @@ def estimate_cost(plan_kg_ha: dict[str, float], region_id: str | None = None) ->
             continue
         product = key.replace("_kg_ha", "")
         price = prices.get(product)
+        if price is None and float(qty) > 0:
+            return None, currency, "PRICE_UNAVAILABLE: " + product
         if price is None:
             continue
         total += float(qty) * float(price)

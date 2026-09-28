@@ -109,6 +109,8 @@ def _check_compatibility(plan: dict, twin: dict, cfg: dict) -> Violation:
 def _check_weather(plan: dict, twin: dict, cfg: dict) -> Violation:
     rule = cfg["rules"]["weather_windows"]
     weather = twin.get("weather") or {}
+    if weather.get("status") in ("COORDINATES_MISSING", "PROVIDER_ERROR", "WEATHER_UNAVAILABLE"):
+        return Violation(rule["rule_id"], "WARNING", "TIMING_NOT_WEATHER_VALIDATED: obtain a current forecast before applying", passed=False)
     gap = plan.get("gap") or (twin.get("current_plan") or {}).get("gap") or {}
     heavy = bool(weather.get("heavy_rain_alert"))
     if heavy and rule.get("no_application_if_heavy_rain") and float(gap.get("N") or 0) > 0:

@@ -7,7 +7,6 @@ HOW MUCH is copied from ledger/optimizer quantities — never generated here.
 
 from __future__ import annotations
 
-from datetime import date, timedelta
 from typing import Any
 
 PRODUCT_ORDER = ("DAP", "UREA", "MOP")
@@ -39,32 +38,17 @@ def _what(how_much: dict[str, float]) -> str:
 
 
 def _when(weather: dict[str, Any], revised: bool) -> dict[str, Any]:
-    today = date.today()
-    if not weather.get("snapshot") and not weather.get("heavy_rain_alert"):
-        return {"code": "WEATHER_UNAVAILABLE", "label": "Timing not weather-validated. Obtain a current field forecast before applying.",
-                "window_start": None, "window_end": None, "revised": revised}
     if weather.get("heavy_rain_alert"):
-        start = today + timedelta(days=7)
-        end = start + timedelta(days=3)
-        return {
-            "code": "DEFER_RAIN",
-            "label": (
-                f"{start.isoformat()} – {end.isoformat()} "
-                "(deferred until after the heavy-rain window)"
-            ),
-            "window_start": start.isoformat(),
-            "window_end": end.isoformat(),
-            "revised": revised,
-        }
-    start = today + timedelta(days=1)
-    end = today + timedelta(days=3)
-    return {
-        "code": "APPLY_NEXT_DRY_DAYS",
-        "label": f"{start.isoformat()} – {end.isoformat()} (next dry application window)",
-        "window_start": start.isoformat(),
-        "window_end": end.isoformat(),
-        "revised": revised,
-    }
+        code = "DEFER_RAIN"
+        label = "Defer application during heavy rain. Recheck a current local forecast before choosing a date."
+    elif not weather.get("snapshot"):
+        code = "WEATHER_UNAVAILABLE"
+        label = "Timing not weather-validated. Obtain a current field forecast before applying."
+    else:
+        code = "CHECK_LOCAL_WINDOW"
+        label = "The seven-day rainfall total does not establish a dry application date. Check the local forecast and soil conditions."
+    return {"code": code, "label": label, "window_start": None,
+            "window_end": None, "revised": revised}
 
 
 def assemble_proof(

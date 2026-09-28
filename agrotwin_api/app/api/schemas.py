@@ -22,6 +22,15 @@ class SoilTestIn(BaseModel):
     ocr_confidence: float | None = None
     original_file_path: str | None = None
 
+    @field_validator("test_date")
+    @classmethod
+    def validate_sample_date(cls, value):
+        if value is not None:
+            parsed = date.fromisoformat(value)
+            if parsed > date.today():
+                raise ValueError("Soil sample date cannot be in the future")
+        return value
+
 
 class CropAssignRequest(BaseModel):
     crop_code: str

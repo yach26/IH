@@ -39,7 +39,7 @@ export default function InsightsPage() {
         setAlerts(data);
         setError(null);
       })
-      .catch((err) => setError(err instanceof ApiError ? err.message : "Could not reach the AgroTwin backend."));
+      .catch((err) => setError(err instanceof ApiError ? err.message : "Could not reach the Kisan Saathi backend."));
   }, []);
 
   React.useEffect(() => {

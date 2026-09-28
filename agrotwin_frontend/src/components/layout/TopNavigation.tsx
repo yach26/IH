@@ -53,7 +53,7 @@ function TopNavigationInner() {
       {/* Official identity strip */}
       <div className="border-b border-border">
         <div className="container mx-auto px-4 h-9 flex items-center justify-between text-[11px] text-muted">
-          <span>भारत सरकार · Government of Maharashtra — Department of Agriculture (Pilot Programme)</span>
+          <span>Kisan Saathi · Farm nutrient decision support · Kolhapur pilot</span>
           <LanguageSwitcher />
         </div>
       </div>
@@ -75,7 +75,7 @@ function TopNavigationInner() {
               </span>
               <span className="leading-tight">
                 <span className="block font-serif text-lg font-bold text-primary group-hover:opacity-80 transition-opacity">
-                  AgroTwin AI
+                  Kisan Saathi
                 </span>
                 <span className="block text-[10px] text-muted -mt-0.5">Digital Krishi Twin</span>
               </span>
@@ -112,6 +112,7 @@ function TopNavigationInner() {
           </div>
 
           <div className="flex items-center space-x-3 text-sm">
+            <Link href="/dashboard" className="rounded-lg border border-primary px-3 py-2 text-primary font-semibold">New field</Link>
             <button className="p-2 rounded-full hover:bg-surface-hover text-muted transition-colors">
               <span className="sr-only">Notifications</span>
               <Bell className="w-5 h-5" strokeWidth={1.75} />

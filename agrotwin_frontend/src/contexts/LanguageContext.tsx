@@ -1,6 +1,8 @@
 
 "use client";
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useSyncExternalStore, ReactNode } from 'react';
+
+import { uiTranslations } from './uiTranslations';
 
 type Language = 'en' | 'hi' | 'mr';
 
@@ -8,20 +10,21 @@ interface LanguageContextType {
   language: Language;
   setLanguage: (lang: Language) => void;
   t: (key: string) => string;
+  translate: (text: string) => string;
 }
 
 const translations: Record<Language, Record<string, string>> = {
   en: {
     'nav.home': 'Home', 'nav.howItWorks': 'How it works', 'nav.capabilities': 'Capabilities', 'nav.pilotRegions': 'Pilot regions', 'nav.resources': 'Resources', 'nav.openDashboard': 'Open dashboard',
-    'hero.badge': 'AGROTWIN AI - SUSTAINABLE FERTILIZER USAGE OPTIMIZER', 'hero.title.1': 'Better decisions', 'hero.title.2': 'begin with a better', 'hero.title.3': 'understanding', 'hero.title.4': 'of every field.', 'hero.subtitle': 'AgroTwin AI provides evidence-grounded, field-specific fertilizer decision support using soil data, crop type, weather and farm history — helping farmers use the right nutrients, at the right time.', 'hero.explore': 'Explore the platform', 'hero.howItWorks': 'How it works', 'hero.currentPlan': 'Current Plan', 'hero.applyUrea': 'Apply Urea (46-0-0)', 'hero.in2Days': 'in 2 days', 'hero.weather': 'Weather', 'hero.lightRain': 'Light Rain',
-    'cap.1.t': 'Living Farm Digital Twin', 'cap.1.d': 'A persistent, evolving representation of field, soil, crop, environment and nutrient history.', 'cap.2.t': 'Continuous Monitoring', 'cap.2.d': 'AgroTwin monitors changing conditions and can trigger re-evaluation when assumptions change.', 'cap.3.t': 'Evidence-Grounded Recommendations', 'cap.3.d': 'Recommendations combine field data, agronomic constraints, optimization and trusted evidence.',
+    'hero.badge': 'Kisan Saathi - SUSTAINABLE FERTILIZER USAGE OPTIMIZER', 'hero.title.1': 'Better decisions', 'hero.title.2': 'begin with a better', 'hero.title.3': 'understanding', 'hero.title.4': 'of every field.', 'hero.subtitle': 'Kisan Saathi provides evidence-grounded, field-specific fertilizer decision support using soil data, crop type, weather and farm history — helping farmers use the right nutrients, at the right time.', 'hero.explore': 'Explore the platform', 'hero.howItWorks': 'How it works', 'hero.currentPlan': 'Current Plan', 'hero.applyUrea': 'Apply Urea (46-0-0)', 'hero.in2Days': 'in 2 days', 'hero.weather': 'Weather', 'hero.lightRain': 'Light Rain',
+    'cap.1.t': 'Living Farm Digital Twin', 'cap.1.d': 'A persistent, evolving representation of field, soil, crop, environment and nutrient history.', 'cap.2.t': 'Continuous Monitoring', 'cap.2.d': 'Kisan Saathi monitors changing conditions and can trigger re-evaluation when assumptions change.', 'cap.3.t': 'Evidence-Grounded Recommendations', 'cap.3.d': 'Recommendations combine field data, agronomic constraints, optimization and trusted evidence.',
     'dl.badge': 'How it works', 'dl.title.1': 'The plan changes', 'dl.title.2': 'when the field changes.', 'dl.desc': 'A continuous system that monitors, detects changes and re-evaluates the plan when conditions evolve.', 'dl.step.desc': 'Continuous process step.', 'dl.s1': 'Observe', 'dl.s2': 'Understand', 'dl.s3': 'Predict', 'dl.s4': 'Optimize', 'dl.s5': 'Validate', 'dl.s6': 'Recommend', 'dl.s7': 'Monitor', 'dl.s8': 'Re-plan',
-    'dt.badge': 'Digital Twin', 'dt.title': 'One field. One evolving picture.', 'dt.subtitle': 'AgroTwin creates a living digital twin of your field by combining soil, crop, weather, farm history and ongoing observations.', 'dt.s1': 'Soil state', 'dt.s1d': 'Nutrient levels, pH, organic carbon, moisture', 'dt.s2': 'Crop state', 'dt.s2d': 'Crop type, variety, growth stage, target yield', 'dt.s3': 'Weather & environment', 'dt.s3d': 'Past applications and nutrient ledger', 'dt.s4': 'Current plan', 'dt.s4d': 'Personalized, field-specific recommendation',
+    'dt.badge': 'Digital Twin', 'dt.title': 'One field. One evolving picture.', 'dt.subtitle': 'Kisan Saathi creates a living digital twin of your field by combining soil, crop, weather, farm history and ongoing observations.', 'dt.s1': 'Soil state', 'dt.s1d': 'Nutrient levels, pH, organic carbon, moisture', 'dt.s2': 'Crop state', 'dt.s2d': 'Crop type, variety, growth stage, target yield', 'dt.s3': 'Weather & environment', 'dt.s3d': 'Past applications and nutrient ledger', 'dt.s4': 'Current plan', 'dt.s4d': 'Personalized, field-specific recommendation',
     'pr.badge': 'Explainability', 'pr.title1': 'Every recommendation', 'pr.title2': 'carries its proof.', 'pr.subtitle': 'See exactly why a recommendation is made — what data was used, which agronomic knowledge it draws from, and how confident we are.', 'pr.view': 'View an example', 'pr.q1': 'WHAT should I apply?', 'pr.q2': 'HOW MUCH is right for my field?', 'pr.q3': 'WHEN should I apply it?', 'pr.q4': 'WHY is this the right plan?', 'pr.q5': 'BASED ON WHAT evidence?', 'pr.q6': 'HOW SURE are we?',
     'wi.badge': 'What-If Simulator', 'wi.title1': 'Test a change', 'wi.title2': 'before it reaches', 'wi.title3': 'the field.', 'wi.subtitle': 'Simulate different fertilizer amounts, application timings or target yields and see the expected outcomes for your field.', 'wi.try': 'Try the simulator', 'wi.scen': 'What-If Scenario', 'wi.fert': 'Fertilizer Budget', 'wi.delay': 'Delay Application', 'wi.target': 'Target Yield', 'wi.plan': 'What-If Plan', 'wi.estY': 'Est. yield:', 'wi.estC': 'Est. cost:', 'wi.sup': 'Supported crops',
-    'pi.badge': 'Pilot Regions', 'pi.title': 'Starting close to home.', 'pi.subtitle': 'AgroTwin is being piloted in key agricultural regions of Maharashtra, focusing on locally important crops and real farmer needs.', 'pi.str1': 'Stronger farms', 'pi.str2': 'for a stronger', 'pi.str3': 'Maharashtra.',
-    'hu.badge': 'Human Oversight', 'hu.title1': 'Technology should know', 'hu.title2': 'when to pause.', 'hu.subtitle': 'AgroTwin is designed to surface low-confidence cases, missing data, conflicting evidence and unusual conditions rather than silently producing unsupported recommendations.', 'hu.c1': 'Confidence and data-quality checks', 'hu.c2': 'Clear reasons when a recommendation is not issued', 'hu.c3': 'Agronomist review and override support', 'hu.c4': 'Audit trail for important decisions', 'hu.rev': 'Needs Review', 'hu.revd': 'Conflicting soil test results detected. Agronomist review required before recommendation.',
-    'fi.badge': 'A MORE RESILIENT AGRICULTURE', 'fi.title1': 'From one-time recommendations', 'fi.title2': 'to continuous farm intelligence.', 'fi.btn': 'Open AgroTwin',
+    'pi.badge': 'Pilot Regions', 'pi.title': 'Starting close to home.', 'pi.subtitle': 'Kisan Saathi is being piloted in key agricultural regions of Maharashtra, focusing on locally important crops and real farmer needs.', 'pi.str1': 'Stronger farms', 'pi.str2': 'for a stronger', 'pi.str3': 'Maharashtra.',
+    'hu.badge': 'Human Oversight', 'hu.title1': 'Technology should know', 'hu.title2': 'when to pause.', 'hu.subtitle': 'Kisan Saathi is designed to surface low-confidence cases, missing data, conflicting evidence and unusual conditions rather than silently producing unsupported recommendations.', 'hu.c1': 'Confidence and data-quality checks', 'hu.c2': 'Clear reasons when a recommendation is not issued', 'hu.c3': 'Agronomist review and override support', 'hu.c4': 'Audit trail for important decisions', 'hu.rev': 'Needs Review', 'hu.revd': 'Conflicting soil test results detected. Agronomist review required before recommendation.',
+    'fi.badge': 'A MORE RESILIENT AGRICULTURE', 'fi.title1': 'From one-time recommendations', 'fi.title2': 'to continuous farm intelligence.', 'fi.btn': 'Open Kisan Saathi',
     'fo.tag': 'Sustainable Fertilizer Usage Optimizer', 'fo.d1': 'Designed for Maharashtra.', 'fo.d2': 'Built for farmers, with care.',
     // ── Dashboard (Farm page) chrome — labels/buttons/status words only.
     // Backend-generated content (recommendation description, citations,
@@ -118,15 +121,15 @@ const translations: Record<Language, Record<string, string>> = {
   },
   mr: {
     'nav.home': 'मुख्यपृष्ठ', 'nav.howItWorks': 'हे कसे काम करते', 'nav.capabilities': 'क्षमता', 'nav.pilotRegions': 'पायलट क्षेत्र', 'nav.resources': 'संसाधने', 'nav.openDashboard': 'डॅशबोर्ड उघडा',
-    'hero.badge': 'ऍग्रोट्विन एआय - शाश्वत खत वापर ऑप्टिमायझर', 'hero.title.1': 'उत्तम निर्णय', 'hero.title.2': 'प्रत्येक शेताच्या', 'hero.title.3': 'उत्तम आकलनापासून', 'hero.title.4': 'सुरू होतात.', 'hero.subtitle': 'AgroTwin AI मातीचा डेटा, पिकाचा प्रकार, हवामान आणि शेताचा इतिहास वापरून पुराव्यावर आधारित खत निर्णय समर्थन प्रदान करते — शेतकऱ्यांना योग्य वेळी योग्य पोषक तत्वे वापरण्यास मदत करते.', 'hero.explore': 'प्लॅटफॉर्म एक्सप्लोर करा', 'hero.howItWorks': 'हे कसे काम करते', 'hero.currentPlan': 'सध्याची योजना', 'hero.applyUrea': 'युरिया लागू करा (46-0-0)', 'hero.in2Days': '2 दिवसांत', 'hero.weather': 'हवामान', 'hero.lightRain': 'हलका पाऊस',
-    'cap.1.t': 'जिवंत शेत डिजिटल ट्विन', 'cap.1.d': 'शेत, माती, पीक, पर्यावरण आणि पोषक तत्वांच्या इतिहासाचे सतत प्रतिनिधित्व.', 'cap.2.t': 'सतत निरीक्षण', 'cap.2.d': 'AgroTwin बदलत्या परिस्थितींवर लक्ष ठेवते आणि परिस्थिती बदलल्यावर पुनर्मूल्यांकन करू शकते.', 'cap.3.t': 'पुराव्यावर आधारित शिफारसी', 'cap.3.d': 'शिफारसी शेतातील डेटा, कृषीविषयक मर्यादा, ऑप्टिमायझेशन आणि विश्वसनीय पुरावे एकत्र करतात.',
+    'hero.badge': 'Kisan Saathi - शाश्वत खत वापर ऑप्टिमायझर', 'hero.title.1': 'उत्तम निर्णय', 'hero.title.2': 'प्रत्येक शेताच्या', 'hero.title.3': 'उत्तम आकलनापासून', 'hero.title.4': 'सुरू होतात.', 'hero.subtitle': 'Kisan Saathi मातीचा डेटा, पिकाचा प्रकार, हवामान आणि शेताचा इतिहास वापरून पुराव्यावर आधारित खत निर्णय समर्थन प्रदान करते — शेतकऱ्यांना योग्य वेळी योग्य पोषक तत्वे वापरण्यास मदत करते.', 'hero.explore': 'प्लॅटफॉर्म एक्सप्लोर करा', 'hero.howItWorks': 'हे कसे काम करते', 'hero.currentPlan': 'सध्याची योजना', 'hero.applyUrea': 'युरिया लागू करा (46-0-0)', 'hero.in2Days': '2 दिवसांत', 'hero.weather': 'हवामान', 'hero.lightRain': 'हलका पाऊस',
+    'cap.1.t': 'जिवंत शेत डिजिटल ट्विन', 'cap.1.d': 'शेत, माती, पीक, पर्यावरण आणि पोषक तत्वांच्या इतिहासाचे सतत प्रतिनिधित्व.', 'cap.2.t': 'सतत निरीक्षण', 'cap.2.d': 'Kisan Saathi बदलत्या परिस्थितींवर लक्ष ठेवते आणि परिस्थिती बदलल्यावर पुनर्मूल्यांकन करू शकते.', 'cap.3.t': 'पुराव्यावर आधारित शिफारसी', 'cap.3.d': 'शिफारसी शेतातील डेटा, कृषीविषयक मर्यादा, ऑप्टिमायझेशन आणि विश्वसनीय पुरावे एकत्र करतात.',
     'dl.badge': 'हे कसे काम करते', 'dl.title.1': 'शेत बदलले की', 'dl.title.2': 'योजना बदलते.', 'dl.desc': 'एक सतत प्रणाली जी परिस्थिती विकसित होताना निरीक्षण करते, बदल शोधते आणि योजनेचे पुनर्मूल्यांकन करते.', 'dl.step.desc': 'सतत प्रक्रिया टप्पा.', 'dl.s1': 'निरीक्षण', 'dl.s2': 'समजून घ्या', 'dl.s3': 'अंदाज', 'dl.s4': 'ऑप्टिमाइझ', 'dl.s5': 'पडताळणी', 'dl.s6': 'शिफारस', 'dl.s7': 'निरीक्षण', 'dl.s8': 'पुन्हा योजना',
-    'dt.badge': 'डिजिटल ट्विन', 'dt.title': 'एक शेत. एक विकसित होणारे चित्र.', 'dt.subtitle': 'AgroTwin माती, पीक, हवामान, शेताचा इतिहास आणि चालू निरीक्षणांचे एकत्रीकरण करून तुमच्या शेताचे जिवंत डिजिटल ट्विन तयार करते.', 'dt.s1': 'मातीची स्थिती', 'dt.s1d': 'पोषक तत्वांची पातळी, सामू, सेंद्रिय कर्ब, ओलावा', 'dt.s2': 'पिकाची स्थिती', 'dt.s2d': 'पिकाचा प्रकार, वाण, वाढीचा टप्पा, लक्ष्य उत्पन्न', 'dt.s3': 'हवामान आणि पर्यावरण', 'dt.s3d': 'मागील अनुप्रयोग आणि पोषक तत्व खाते', 'dt.s4': 'सध्याची योजना', 'dt.s4d': 'वैयक्तिकृत, शेत-विशिष्ट शिफारस',
+    'dt.badge': 'डिजिटल ट्विन', 'dt.title': 'एक शेत. एक विकसित होणारे चित्र.', 'dt.subtitle': 'Kisan Saathi माती, पीक, हवामान, शेताचा इतिहास आणि चालू निरीक्षणांचे एकत्रीकरण करून तुमच्या शेताचे जिवंत डिजिटल ट्विन तयार करते.', 'dt.s1': 'मातीची स्थिती', 'dt.s1d': 'पोषक तत्वांची पातळी, सामू, सेंद्रिय कर्ब, ओलावा', 'dt.s2': 'पिकाची स्थिती', 'dt.s2d': 'पिकाचा प्रकार, वाण, वाढीचा टप्पा, लक्ष्य उत्पन्न', 'dt.s3': 'हवामान आणि पर्यावरण', 'dt.s3d': 'मागील अनुप्रयोग आणि पोषक तत्व खाते', 'dt.s4': 'सध्याची योजना', 'dt.s4d': 'वैयक्तिकृत, शेत-विशिष्ट शिफारस',
     'pr.badge': 'स्पष्टीकरणक्षमता', 'pr.title1': 'प्रत्येक शिफारस आपला', 'pr.title2': 'पुरावा सोबत आणते.', 'pr.subtitle': 'शिफारस नक्की का केली आहे ते पहा — कोणता डेटा वापरला गेला, तो कोणत्या कृषी ज्ञानातून घेतला आहे आणि आम्हाला किती खात्री आहे.', 'pr.view': 'एक उदाहरण पहा', 'pr.q1': 'मी काय लागू करावे?', 'pr.q2': 'माझ्या शेतासाठी किती योग्य आहे?', 'pr.q3': 'मी ते कधी लागू करावे?', 'pr.q4': 'ही योग्य योजना का आहे?', 'pr.q5': 'कोणत्या पुराव्यांवर आधारित?', 'pr.q6': 'आम्हाला किती खात्री आहे?',
     'wi.badge': 'व्हॉट-इफ सिम्युलेटर', 'wi.title1': 'बदल शेतात पोहोचण्यापूर्वी', 'wi.title2': 'त्याची', 'wi.title3': 'चाचणी करा.', 'wi.subtitle': 'विविध खतांचे प्रमाण, अर्जाच्या वेळा किंवा लक्ष्यित उत्पन्नाचे अनुकरण करा आणि तुमच्या शेतासाठी अपेक्षित परिणाम पहा.', 'wi.try': 'सिम्युलेटर वापरून पहा', 'wi.scen': 'व्हॉट-इफ परिस्थिती', 'wi.fert': 'खत बजेट', 'wi.delay': 'अर्जास विलंब', 'wi.target': 'लक्ष्य उत्पन्न', 'wi.plan': 'व्हॉट-इफ योजना', 'wi.estY': 'अंदाजित उत्पन्न:', 'wi.estC': 'अंदाजित खर्च:', 'wi.sup': 'समर्थित पिके',
-    'pi.badge': 'पायलट क्षेत्र', 'pi.title': 'घराजवळून सुरुवात.', 'pi.subtitle': 'AgroTwin महाराष्ट्रातील प्रमुख कृषी क्षेत्रांमध्ये प्रायोगिक तत्त्वावर राबवले जात आहे, स्थानिक पातळीवर महत्त्वाची पिके आणि वास्तविक शेतकऱ्यांच्या गरजांवर लक्ष केंद्रित करून.', 'pi.str1': 'सशक्त महाराष्ट्रासाठी', 'pi.str2': 'सशक्त', 'pi.str3': 'शेती.',
-    'hu.badge': 'मानवी निरीक्षण', 'hu.title1': 'तंत्रज्ञानाला माहित असले पाहिजे', 'hu.title2': 'कधी थांबायचे.', 'hu.subtitle': 'AgroTwin चुपचाप असमर्थित शिफारसी देण्याऐवजी कमी आत्मविश्वासाची प्रकरणे, गहाळ डेटा, परस्परविरोधी पुरावे आणि असामान्य परिस्थिती समोर आणण्यासाठी डिझाइन केले आहे.', 'hu.c1': 'आत्मविश्वास आणि डेटा-गुणवत्तेची तपासणी', 'hu.c2': 'शिफारस न दिल्यास स्पष्ट कारणे', 'hu.c3': 'कृषीशास्त्रज्ञांचे पुनरावलोकन आणि समर्थन', 'hu.c4': 'महत्त्वाच्या निर्णयांसाठी ऑडिट ट्रेल', 'hu.rev': 'पुनरावलोकन आवश्यक', 'hu.revd': 'परस्परविरोधी माती परीक्षण परिणाम आढळले. शिफारसीपूर्वी कृषीशास्त्रज्ञांचे पुनरावलोकन आवश्यक.',
-    'fi.badge': 'अधिक लवचिक शेती', 'fi.title1': 'एकवेळच्या शिफारसींपासून ते', 'fi.title2': 'सतत शेत बुद्धिमत्तेपर्यंत.', 'fi.btn': 'AgroTwin उघडा',
+    'pi.badge': 'पायलट क्षेत्र', 'pi.title': 'घराजवळून सुरुवात.', 'pi.subtitle': 'Kisan Saathi महाराष्ट्रातील प्रमुख कृषी क्षेत्रांमध्ये प्रायोगिक तत्त्वावर राबवले जात आहे, स्थानिक पातळीवर महत्त्वाची पिके आणि वास्तविक शेतकऱ्यांच्या गरजांवर लक्ष केंद्रित करून.', 'pi.str1': 'सशक्त महाराष्ट्रासाठी', 'pi.str2': 'सशक्त', 'pi.str3': 'शेती.',
+    'hu.badge': 'मानवी निरीक्षण', 'hu.title1': 'तंत्रज्ञानाला माहित असले पाहिजे', 'hu.title2': 'कधी थांबायचे.', 'hu.subtitle': 'Kisan Saathi चुपचाप असमर्थित शिफारसी देण्याऐवजी कमी आत्मविश्वासाची प्रकरणे, गहाळ डेटा, परस्परविरोधी पुरावे आणि असामान्य परिस्थिती समोर आणण्यासाठी डिझाइन केले आहे.', 'hu.c1': 'आत्मविश्वास आणि डेटा-गुणवत्तेची तपासणी', 'hu.c2': 'शिफारस न दिल्यास स्पष्ट कारणे', 'hu.c3': 'कृषीशास्त्रज्ञांचे पुनरावलोकन आणि समर्थन', 'hu.c4': 'महत्त्वाच्या निर्णयांसाठी ऑडिट ट्रेल', 'hu.rev': 'पुनरावलोकन आवश्यक', 'hu.revd': 'परस्परविरोधी माती परीक्षण परिणाम आढळले. शिफारसीपूर्वी कृषीशास्त्रज्ञांचे पुनरावलोकन आवश्यक.',
+    'fi.badge': 'अधिक लवचिक शेती', 'fi.title1': 'एकवेळच्या शिफारसींपासून ते', 'fi.title2': 'सतत शेत बुद्धिमत्तेपर्यंत.', 'fi.btn': 'Kisan Saathi उघडा',
     'fo.tag': 'शाश्वत खत वापर ऑप्टिमायझर', 'fo.d1': 'महाराष्ट्रासाठी डिझाइन केलेले.', 'fo.d2': 'शेतकऱ्यांसाठी काळजीपूर्वक बनवलेले.',
     'dash.uploadSoilReport': 'माती अहवाल अपलोड करा', 'dash.fieldOverview': 'शेताचा आढावा', 'dash.viewOnMap': 'नकाशावर पहा',
     'dash.active': 'सक्रिय', 'dash.crop': 'पीक', 'dash.stage': 'टप्पा', 'dash.area': 'क्षेत्रफळ', 'dash.soilType': 'मातीचा प्रकार',
@@ -170,14 +173,59 @@ const translations: Record<Language, Record<string, string>> = {
 
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
 
+const normalize = (text: string) => text.replace(/\s+/g, ' ').trim();
+const englishKeys = Object.fromEntries(Object.entries(translations.en).map(([key, value]) => [normalize(value), key]));
+let memoryLanguage: Language = 'en';
+function currentLanguage(): Language {
+  try { const saved = localStorage.getItem('kisan-saathi:language'); if (saved === 'hi' || saved === 'mr' || saved === 'en') return saved; } catch {}
+  return memoryLanguage;
+}
+function subscribeLanguage(callback: () => void) {
+  window.addEventListener('storage', callback);
+  window.addEventListener('kisan-language', callback);
+  return () => { window.removeEventListener('storage', callback); window.removeEventListener('kisan-language', callback); };
+}
+export function translateText(text: string, language: Language): string {
+  if (language === 'en') return text;
+  const normalized = normalize(text);
+  const index = language === 'hi' ? 0 : 1;
+  const existingKey = englishKeys[normalized];
+  const exact = uiTranslations[normalized]?.[index] || (existingKey ? translations[language][existingKey] : undefined);
+  if (exact) return text.replace(text.trim(), exact);
+  // Translate composed labels without changing numbers, record IDs or source documents.
+  const soil = normalized.match(/^Soil (\d+)\/100$/);
+  if (soil) return (language === 'hi' ? 'मृदा ' : 'माती ') + soil[1] + '/100';
+  const soilSummary = normalized.match(/^Based on real soil test \(N=(.+?) kg\/ha, P=(.+?) kg\/ha, K=(.+?) kg\/ha\) and (.+) at (.+) stage\. Nutrient gaps: N (.+?) kg\/ha, P₂O₅ (.+?) kg\/ha, K₂O (.+?) kg\/ha\.$/);
+  if (soilSummary) {
+    const [, nitrogen, phosphorus, potassium, crop, stage, nitrogenGap, phosphorusGap, potassiumGap] = soilSummary;
+    const localizedCrop = uiTranslations[normalize(crop)]?.[index] || crop;
+    const localizedStage = uiTranslations[normalize(stage)]?.[index] || stage;
+    return language === 'hi'
+      ? `वास्तविक मृदा परीक्षण के आधार पर (N=${nitrogen} kg/ha, P=${phosphorus} kg/ha, K=${potassium} kg/ha) और ${localizedCrop} की फसल ${localizedStage} अवस्था में है। पोषक कमियाँ: N ${nitrogenGap} kg/ha, P₂O₅ ${phosphorusGap} kg/ha, K₂O ${potassiumGap} kg/ha।`
+      : `प्रत्यक्ष माती चाचणीवर आधारित (N=${nitrogen} kg/ha, P=${phosphorus} kg/ha, K=${potassium} kg/ha); ${localizedCrop} पीक ${localizedStage} टप्प्यात आहे. पोषक कमतरता: N ${nitrogenGap} kg/ha, P₂O₅ ${phosphorusGap} kg/ha, K₂O ${potassiumGap} kg/ha.`;
+  }
+  const recordedFlags = normalized.match(/^(\d+) recorded flags\. Open the proof to inspect the data-quality checks\.$/);
+  if (recordedFlags) return language === 'hi'
+    ? `${recordedFlags[1]} संकेत दर्ज हैं। डेटा गुणवत्ता जाँचने के लिए प्रमाण खोलें।`
+    : `${recordedFlags[1]} संकेत नोंदवले आहेत. डेटा गुणवत्ता तपासण्यासाठी पुरावे उघडा.`;
+  const cost = normalized.match(/^This mix costs (.+) (less|more) than the baseline\.$/);
+  if (cost) return language === 'hi' ? 'इस मिश्रण की लागत आधार योजना से ' + cost[1] + (cost[2] === 'less' ? ' कम है।' : ' अधिक है।') : 'या मिश्रणाचा खर्च आधार योजनेपेक्षा ' + cost[1] + (cost[2] === 'less' ? ' कमी आहे.' : ' जास्त आहे.');
+  const pieces = text.split(/( · | \+ |, )/);
+  if (pieces.length > 1) return pieces.map(piece => uiTranslations[normalize(piece)]?.[index] || piece).join('');
+  return text;
+}
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [language, setLanguage] = useState<Language>('en');
-  const t = (key: string): string => translations[language][key] || key;
-  return (
-    <LanguageContext.Provider value={{ language, setLanguage, t }}>
-      {children}
-    </LanguageContext.Provider>
-  );
+  const language = useSyncExternalStore(subscribeLanguage, currentLanguage, () => 'en' as Language);
+  const setLanguage = (lang: Language) => {
+    memoryLanguage = lang;
+    try { localStorage.setItem('kisan-saathi:language', lang); } catch {}
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    window.dispatchEvent(new Event('kisan-language'));
+  };
+  useEffect(() => { document.documentElement.lang = language; }, [language]);
+  const translate = (text: string) => translateText(text, language);
+  const t = (key: string): string => translations[language][key] || translate(key);
+  return <LanguageContext.Provider value={{ language, setLanguage, t, translate }}>{children}</LanguageContext.Provider>;
 }
 
 export function useLanguage() {

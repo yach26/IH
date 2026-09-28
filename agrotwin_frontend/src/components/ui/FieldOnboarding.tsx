@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { assignCrop, createFarmer, createField, getOnboardingOptions, type FieldSummary, type OnboardingOptions } from "@/lib/api";
 
@@ -92,14 +93,15 @@ export default function FieldOnboarding({ fields, fieldsError, onSelect }: {
           <button disabled={busy || !options} className="w-full rounded-lg bg-[#0F4D35] px-5 py-3 text-sm font-semibold text-white disabled:opacity-50">{busy ? "Saving your field…" : "Save field & upload soil report"}</button>
         </form>
         <details className="mt-6 border-t border-gray-200 pt-4">
-          <summary className="cursor-pointer text-sm font-medium text-gray-600">Open an existing field or pilot example</summary>
-          <p className="mt-2 text-xs text-gray-500">Pilot records already contain sample data. Select a record explicitly to view it.</p>
+          <summary className="cursor-pointer text-sm font-medium text-gray-600">Open an existing farmer field</summary>
+          <p className="mt-2 text-xs text-gray-500">Select a field previously created through farmer onboarding.</p>
           <select aria-label="Open an existing field" value="" className={input} onChange={e => { if (e.target.value) onSelect(e.target.value); }}>
             <option value="">Choose a field</option>
             {fields.map(f => <option key={f.field_code} value={f.field_code}>{f.field_code} · {f.farmer_name || f.crop_code || "Unassigned"}</option>)}
           </select>
           {fieldsError && <p role="alert" className="mt-2 text-xs text-red-700">{fieldsError}</p>}
         </details>
+        <Link href="/demo" className="mt-5 inline-block text-sm underline text-gray-600">View separate pilot demo (sample data)</Link>
       </div>
     </main>
   );

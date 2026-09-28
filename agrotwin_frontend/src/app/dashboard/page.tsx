@@ -5,12 +5,15 @@ import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import {
   getTwin, recommend, overridePlan, getRecommendationHistory, ApiError,
-  type TwinResponse, type RecommendationHistoryEntry,
+  type TwinResponse, type RecommendationHistoryEntry, type RecommendationOut,
 } from '@/lib/api';
 import { useFieldParam } from '@/lib/useFieldParam';
 import FieldSelector from '@/components/ui/FieldSelector';
 import FieldOnboarding from '@/components/ui/FieldOnboarding';
 import StageTimeline from '@/components/ui/StageTimeline';
+import ProofTrace from '@/components/ui/ProofTrace';
+import ApplicationHistory from '@/components/ui/ApplicationHistory';
+import LocalizedText from '@/components/ui/LocalizedText';
 import { Volume2, History, ShieldCheck } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 
@@ -63,6 +66,7 @@ function StatusDot({ color }: { color: string }) {
 // ─── Types ────────────────────────────────────────────────────────────────────
 type NutrientEntry = { value: number | null; score: number | null; label: string; color: string };
 type FieldState = {
+  proof: RecommendationOut | null;
   id: string;
   status: string;
   location: string | null;
@@ -120,17 +124,8 @@ function mapTwinToFieldState(data: TwinResponse): FieldState {
   const nScore = soil.n_score ?? null;
   const kScore = soil.k_score ?? null;
 
-  // Water stress and crop condition only have a real signal when the
-  // relevant backend data actually exists — otherwise "not available", never
-  // a fabricated "Good"/"Low".
+  // Rainfall and nutrient sufficiency do not measure crop condition or water stress.
   const weatherKnown = weather.available;
-  const rainfallOk = weatherKnown ? !weather.heavy_rain_alert : null;
-  const waterStress = rainfallOk == null ? 'Not available' : rainfallOk ? 'Low' : 'High';
-  const waterColor = rainfallOk == null ? 'text-gray-400' : rainfallOk ? 'text-gray-400' : 'text-red-500';
-  const nSufficient = nScore != null ? nScore >= 60 : null;
-  const cropCond = nSufficient == null ? 'Not available' : nSufficient ? 'Good' : 'Moderate';
-  const cropColor = nSufficient == null ? 'text-gray-400' : nSufficient ? 'text-green-500' : 'text-amber-500';
-  const overall = (nSufficient && rainfallOk) ? 'Healthy' : (nSufficient == null && rainfallOk == null) ? 'Unknown' : 'Needs Attention';
 
   const gap = plan.soilGap || {};
   // Citation is shown once as its own footer line (below) — keep it out of
@@ -138,6 +133,7 @@ function mapTwinToFieldState(data: TwinResponse): FieldState {
   const description = `Based on real soil test (N=${nutrients.n?.current ?? '—'} kg/ha, P=${nutrients.p?.current ?? '—'} kg/ha, K=${nutrients.k?.current ?? '—'} kg/ha) and ${data.crop} at ${currentStageName} stage. Nutrient gaps: N ${gap.N ?? '—'} kg/ha, P₂O₅ ${gap.P2O5 ?? '—'} kg/ha, K₂O ${gap.K2O ?? '—'} kg/ha.`;
 
   return {
+    proof: data.proof ?? null,
     id: data.fieldId,
     status: 'Active',
     location: data.location,
@@ -165,9 +161,9 @@ function mapTwinToFieldState(data: TwinResponse): FieldState {
       note: description,
     },
     fieldStatus: {
-      cropCondition: { label: cropCond, color: cropColor },
-      waterStress: { label: waterStress, color: waterColor },
-      overall,
+      cropCondition: { label: 'Not available', color: 'text-gray-500' },
+      waterStress: { label: 'Not available', color: 'text-gray-500' },
+      overall: 'Unknown',
     },
     recommendation: {
       action: plan.nextAction || 'Awaiting plan',
@@ -192,86 +188,49 @@ function mapTwinToFieldState(data: TwinResponse): FieldState {
 
 // ─── Official Recommendation Panel — the hero of the page ─────────────────────
 function OfficialRecommendationPanel({
-  field,
-  generating,
-  generateError,
-  onGenerate,
+  field, generating, generateError, onGenerate,
 }: {
   field: FieldState;
   generating: boolean;
   generateError: string | null;
   onGenerate: () => void;
 }) {
-  const { t, language } = useLanguage();
+  const { t, translate, language } = useLanguage();
   const rec = field.recommendation;
-  const [doneSteps, setDoneSteps] = React.useState<Set<number>>(new Set());
-  const toggleStep = (i: number) =>
-    setDoneSteps((prev) => {
-      const next = new Set(prev);
-      if (next.has(i)) next.delete(i); else next.add(i);
-      return next;
-    });
-
-  function handlePrint() {
-    window.print();
-  }
-
-  // Built only from real fields already on the recommendation — no invented
-  // thresholds. The final "re-check" step is a generic engineering-default
-  // prompt (not a sourced re-testing interval), labelled as such.
-  const steps: string[] = [
-    `${t('dash.applyAction')} ${rec.action} ${language === 'en' ? 'within' : ''}: ${rec.applicationWindow}`,
-    ...rec.requiredActions,
-    'Re-run the recommendation after this crop\'s next growth-stage change, a new soil test, or a significant weather event (ENGINEERING_DEFAULT — no sourced re-testing interval).',
-  ];
-
+  const proof = field.proof;
+  const [proofSelection, setProofSelection] = React.useState<string | null>(null);
   const [speaking, setSpeaking] = React.useState(false);
   const [voiceUnavailable, setVoiceUnavailable] = React.useState(false);
-  const voiceLangMap: Record<string, string> = { en: 'en-IN', hi: 'hi-IN', mr: 'mr-IN' };
+  const isAbstain = rec.status === 'ABSTAIN' || rec.status === 'ABSTAINED';
+  const isNoData = rec.status === 'NO_DATA';
+  const fertilizerEntries = Object.entries(rec.fertilizerBreakdown).filter(([, value]) => value > 0);
+  const nextActions = rec.requiredActions.length > 0 ? rec.requiredActions : isNoData ? [
+    'Check the crop and growth stage recorded for this field.',
+    'Review your confirmed soil measurements and previous fertilizer applications.',
+    'Generate a recommendation to check the evidence and application timing.',
+  ] : isAbstain ? [
+    'Review the reason above and correct any missing or uncertain field data.',
+    'Confirm soil measurements and the current crop stage before generating again.',
+  ] : [];
+
+  React.useEffect(() => () => {
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+  }, []);
 
   function handleListen() {
-    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
-    if (speaking) {
-      window.speechSynthesis.cancel();
-      setSpeaking(false);
-      return;
-    }
-    // A full farm-status narration, not just the one-line recommendation:
-    // soil health, each nutrient's status, weather, the recommendation
-    // itself, and every next step — all built from data already on screen,
-    // with fixed phrases translated via t() and only the backend-generated
-    // parts (crop/product names, numbers, dates, citations) left in English
-    // since they were never machine-translated in the first place.
-    const parts: string[] = [
-      `${t('dash.listenFullSummary')} ${field.id}.`,
-    ];
-    if (field.soilHealthScore != null) {
-      parts.push(`${t('dash.listenSoilScore')}: ${field.soilHealthScore} ${t('dash.listenOutOf100')}.`);
-      parts.push(`${t('dash.listenNutrients')} ${tStatus(t, field.soil.n.label)}. ${t('dash.listenPhosphorusIs')} ${tStatus(t, field.soil.p.label)}. ${t('dash.listenPotassiumIs')} ${tStatus(t, field.soil.k.label)}.`);
-    }
-    if (field.weather.available) {
-      parts.push(`${t('dash.listenWeatherIs')} ${field.weather.rainfall7d} mm.`);
-    } else {
-      parts.push(t('dash.listenWeatherNone'));
-    }
-    if (!isAbstain && !isNoData) {
-      parts.push(`${t('dash.applyAction')}: ${rec.action}.`);
-      parts.push(`${t('dash.quantity')}: ${rec.quantity}.`);
-      parts.push(`${t('dash.confidence')}: ${rec.confidence}.`);
-      parts.push(t('dash.listenStepsIntro'));
-      steps.forEach((s, i) => parts.push(`${i + 1}. ${s}`));
-    } else if (rec.reason) {
-      parts.push(`${t('dash.note')}: ${rec.reason}`);
-    }
-    const utterance = new SpeechSynthesisUtterance(parts.filter(Boolean).join(" "));
-    const targetLang = voiceLangMap[language] || 'en-IN';
-    utterance.lang = targetLang;
-    // Not every browser ships an installed Hindi/Marathi voice — pick the
-    // closest available match rather than silently falling back to a
-    // default English voice while claiming lang="hi-IN".
+    if (!('speechSynthesis' in window)) { setVoiceUnavailable(true); return; }
+    if (speaking) { window.speechSynthesis.cancel(); setSpeaking(false); return; }
+    const targetLang = ({ en: 'en-IN', hi: 'hi-IN', mr: 'mr-IN' })[language];
     const voices = window.speechSynthesis.getVoices();
-    const match = voices.find((v) => v.lang === targetLang) || voices.find((v) => v.lang.startsWith(targetLang.slice(0, 2)));
+    const match = voices.find((voice) => voice.lang === targetLang) || voices.find((voice) => voice.lang.startsWith(targetLang.slice(0, 2)));
     setVoiceUnavailable(language !== 'en' && !match);
+    const utterance = new SpeechSynthesisUtterance([
+      'Kisan Saathi. ' + field.id + '.',
+      isAbstain || isNoData ? translate(rec.reason || 'No recommendation is available yet.') : [rec.action, rec.quantity, rec.applicationWindow].map(translate).join('. '),
+      translate('Confidence') + ': ' + translate(rec.confidence) + '.',
+      ...nextActions.map(translate),
+    ].join(' '));
+    utterance.lang = targetLang;
     if (match) utterance.voice = match;
     utterance.onend = () => setSpeaking(false);
     utterance.onerror = () => setSpeaking(false);
@@ -279,156 +238,101 @@ function OfficialRecommendationPanel({
     setSpeaking(true);
   }
 
-  const isAbstain = rec.status === 'ABSTAIN';
-  const isNoData = rec.status === 'NO_DATA';
-  const fertilizerEntries = Object.entries(rec.fertilizerBreakdown).filter(([, v]) => v > 0);
+  function answerHeading(number: number, title: string) {
+    return <h2 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-muted"><span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">{number}</span>{title}</h2>;
+  }
 
   return (
-    <div id="official-recommendation" className="relative gov-panel bg-surface border-2 border-primary/20 shadow-sm mx-4 md:mx-6 mt-4 p-5 md:p-7">
-      {/* Stamp-style confidence badge */}
-      {!isAbstain && !isNoData && rec.confidence && (
-        <div
-          className={`absolute top-3 right-3 md:top-5 md:right-6 border-2 rounded-full px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider -rotate-6 select-none ${confidenceBadgeClass(rec.confidence)}`}
-          style={{ borderStyle: 'double', borderWidth: '3px' }}
-        >
-          {t('dash.confidence')}<br />{rec.confidence}
+    <LocalizedText><section id="official-recommendation" aria-label="Field fertilizer recommendation" className="mx-4 mt-4 rounded-xl border border-border bg-surface p-5 shadow-sm md:mx-6 md:p-7">
+      <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-widest text-primary">Kisan Saathi · Evidence-based recommendation</p>
+          <h1 className="mt-2 text-xl font-bold md:text-2xl">{t('dash.fertilizerPlanFor')} {field.id}</h1>
+          <p className="mt-1 text-sm text-muted">{field.crop} · {field.stage || 'Growth stage not recorded'}</p>
         </div>
-      )}
-
-      <div className="flex items-center justify-between gap-3 mb-1 no-print">
-        <span className="text-xs font-bold uppercase tracking-widest text-primary">
-          {t('dash.officialRecommendation')}
-        </span>
+        <button type="button" onClick={onGenerate} disabled={generating} className="no-print min-h-11 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-primary-hover disabled:opacity-60">
+          {generating ? 'Generating recommendation…' : 'Generate new recommendation'}
+        </button>
       </div>
-      <h1 className="font-serif text-xl md:text-2xl font-bold text-foreground mb-4 pr-28">
-        {t('dash.fertilizerPlanFor')} {field.id}
-      </h1>
+      {generateError && <p role="alert" className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">{generateError}</p>}
+      {generating && <p role="status" className="mb-4 text-sm text-primary">Checking field data, nutrient gaps, evidence and weather…</p>}
 
-      {isAbstain ? (
-        <div className="border-l-4 border-red-600 bg-red-50 p-4">
-          <p className="text-xs font-bold text-red-700 uppercase tracking-wide mb-1">{t('dash.abstainedBadge')}</p>
-          <p className="text-base font-semibold text-foreground mb-2">{t('dash.abstainedTitle')}</p>
-          {rec.reason && <p className="text-sm text-muted mb-2">{rec.reason}</p>}
-          {rec.requiredActions.length > 0 && (
-            <div>
-              <p className="text-xs font-semibold text-muted mb-1">{t('dash.requiredBeforePlan')}</p>
-              <ul className="text-sm text-foreground list-disc list-inside space-y-0.5">
-                {rec.requiredActions.map((a, i) => <li key={i}>{a}</li>)}
-              </ul>
-            </div>
-          )}
-        </div>
-      ) : isNoData ? (
-        <div className="border-l-4 border-muted bg-surface-hover p-4">
-          <p className="text-base font-semibold text-foreground mb-1">{t('dash.noRecGenerated')}</p>
-          <p className="text-sm text-muted mb-3">{t('dash.runPipeline')}</p>
-          {generateError && <p className="text-sm text-red-600 mb-3">{generateError}</p>}
-          <button
-            onClick={onGenerate}
-            disabled={generating}
-            className="inline-flex items-center gap-2 bg-primary hover:bg-primary-hover disabled:opacity-50 text-white text-sm font-semibold px-5 py-2.5 gov-panel transition"
-          >
-            {generating ? t('dash.generating') : t('dash.generateRecommendation')}
-          </button>
+      {isAbstain || isNoData ? (
+        <div className={'rounded-lg border p-4 ' + (isAbstain ? 'border-amber-200 bg-amber-50' : 'border-border bg-surface-hover')}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-lg font-semibold">{isAbstain ? 'More information is needed before applying fertilizer' : 'Your first recommendation is ready to be generated'}</h2>
+            {isAbstain && <button type="button" onClick={() => setProofSelection('ABSTAIN confidence')} className={'min-h-11 rounded-full border px-4 py-2 text-sm font-bold ' + confidenceBadgeClass('ABSTAIN')}>ABSTAIN · View proof</button>}
+          </div>
+          <p className="mt-2 text-sm text-muted">{rec.reason || (isNoData ? 'Your confirmed soil test is saved. Check your crop details and application history, then generate the plan.' : 'The available evidence does not support a reliable fertilizer plan.')}</p>
+          <h3 className="mt-4 text-sm font-semibold">What we need next</h3>
+          <ul className="mt-2 space-y-2 text-sm">{nextActions.map((action) => <li key={action} className="flex gap-2"><span aria-hidden="true" className="text-primary">□</span><span>{action}</span></li>)}</ul>
+          <Link href={'/upload?field=' + encodeURIComponent(field.id)} className="mt-4 inline-flex min-h-11 items-center rounded-lg border border-primary px-4 py-2 text-sm font-semibold text-primary">Review soil report and crop details</Link>
         </div>
       ) : (
+        <div className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2 [&>div]:min-w-0 [&>div]:break-words">
+          <div className="rounded-lg border border-border p-4">
+            {answerHeading(1, 'What should I apply?')}
+            <p className="text-xl font-bold text-foreground">{rec.action}</p>
+            {rec.status === 'NO_FERTILIZER_NEEDED' && <p className="mt-2 text-sm text-muted">The saved ledger has no remaining actionable nutrient gap.</p>}
+          </div>
+          <div className="rounded-lg border border-border p-4">
+            {answerHeading(2, 'How much?')}
+            <div className="flex flex-wrap gap-3">
+              {fertilizerEntries.length > 0 ? fertilizerEntries.map(([key, value]) => (
+                <button key={key} type="button" onClick={() => setProofSelection(formatFertilizerName(key) + ' ' + value + ' kg/ha')} aria-label={'View Proof Trace for ' + formatFertilizerName(key) + ' ' + value + ' kg per hectare'} className="min-h-20 flex-1 rounded-lg bg-primary/5 px-4 py-3 text-left transition hover:bg-primary/10">
+                  <span className="block text-xs font-semibold text-muted">{formatFertilizerName(key)}</span>
+                  <span className="text-3xl font-bold tabular-nums text-primary">{value}</span><span className="ml-1 text-xs text-muted">kg/ha</span>
+                  <span className="mt-1 block text-xs font-medium text-primary">View calculation →</span>
+                </button>
+              )) : <p className="text-sm text-muted">{rec.quantity}</p>}
+            </div>
+          </div>
+          <div className="rounded-lg border border-primary/25 bg-primary/5 p-4">
+            {answerHeading(3, 'When? · Application window')}
+            <p className="text-lg font-bold leading-relaxed">{rec.applicationWindow}</p>
+            <p className="mt-2 text-sm text-muted">{proof?.why?.weather || 'Inspect the saved proof for weather validation before applying.'}</p>
+          </div>
+          <div className="rounded-lg border border-border p-4">
+            {answerHeading(4, 'Why this plan?')}
+            <p className="text-sm leading-relaxed text-muted">The nutrient ledger compares crop requirements with confirmed soil measurements and credited prior applications. The optimizer converts the remaining nutrient gap into fertilizer quantities.</p>
+            {proof?.why?.gap && <p className="mt-3 text-sm font-semibold">Remaining gap: N {proof.why.gap.N ?? '—'} · P₂O₅ {proof.why.gap.P2O5 ?? '—'} · K₂O {proof.why.gap.K2O ?? '—'} kg/ha</p>}
+            <button type="button" onClick={() => setProofSelection('Nutrient gap calculation')} className="mt-2 min-h-11 text-sm font-semibold text-primary underline underline-offset-4">Inspect the exact calculation</button>
+          </div>
+          <div className="rounded-lg border border-border p-4">
+            {answerHeading(5, 'Based on what?')}
+            <p className="break-words text-sm leading-relaxed">{rec.citation || 'No RDF citation was recorded for this plan.'}</p>
+            <p className="mt-2 text-xs text-muted">Confirmed field records, the saved nutrient ledger and retrieved agronomic evidence.</p>
+            <button type="button" onClick={() => setProofSelection('Sources and supporting evidence')} className="mt-2 min-h-11 text-sm font-semibold text-primary underline underline-offset-4">Read source paragraphs</button>
+          </div>
+          <div className="rounded-lg border border-border p-4">
+            {answerHeading(6, 'How sure are we?')}
+            <button type="button" onClick={() => setProofSelection('Confidence breakdown')} className={'min-h-11 rounded-full border px-4 py-2 text-sm font-bold ' + confidenceBadgeClass(rec.confidence)}>{rec.confidence} · View proof</button>
+            <p className="mt-3 text-sm text-muted">{rec.flags.length ? rec.flags.length + ' recorded flags. Open the proof to inspect the data-quality checks.' : 'Open the proof to inspect the recorded data-quality checks.'}</p>
+          </div>
+        </div>
+      )}
+
+      {!isAbstain && !isNoData && (
         <>
-          {/* Big fertilizer quantity cards */}
-          {fertilizerEntries.length > 0 ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-5">
-              {fertilizerEntries.map(([key, val]) => (
-                <div key={key} className="gov-panel border border-border bg-surface-hover px-4 py-3 text-center">
-                  <div className="text-[11px] font-semibold uppercase tracking-wide text-muted mb-1">{formatFertilizerName(key)}</div>
-                  <div className="text-3xl md:text-4xl font-extrabold text-primary font-serif leading-none">{val}</div>
-                  <div className="text-[11px] text-muted mt-1">kg/ha</div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-muted mb-5">{rec.quantity}</p>
-          )}
-
-          <p className="text-sm text-muted leading-relaxed mb-5 max-w-2xl">{rec.description}</p>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Next steps checklist */}
+          <div className="mt-4 flex flex-wrap items-start justify-between gap-5 rounded-lg border border-border bg-surface-hover p-4">
             <div>
-              <p className="text-xs font-bold uppercase tracking-wide text-foreground mb-2">{t('dash.nextSteps')}</p>
-              <ol className="space-y-2">
-                {steps.map((step, i) => (
-                  <li key={i} className="flex items-start gap-2.5">
-                    <button
-                      onClick={() => toggleStep(i)}
-                      aria-pressed={doneSteps.has(i)}
-                      className={`no-print mt-0.5 flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center text-[10px] font-bold transition ${
-                        doneSteps.has(i)
-                          ? 'bg-primary border-primary text-white'
-                          : 'border-muted text-muted'
-                      }`}
-                    >
-                      {doneSteps.has(i) ? '✓' : i + 1}
-                    </button>
-                    <span className={`text-sm ${doneSteps.has(i) ? 'line-through text-muted' : 'text-foreground'}`}>{step}</span>
-                  </li>
-                ))}
-              </ol>
+              <p className="text-xs font-bold uppercase tracking-wide text-muted">Estimated plan cost</p>
+              <p className="mt-1 text-2xl font-bold tabular-nums">{rec.estimatedCost == null ? 'Not available' : '₹' + Math.round(rec.estimatedCost).toLocaleString('en-IN')}<span className="ml-2 text-sm font-normal text-muted">{rec.estimatedCost != null ? 'per hectare' : ''}</span></p>
+              <p className="mt-2 max-w-2xl break-words text-xs text-muted">{rec.costCitation || 'No price source was recorded. Ask your local supplier for a current quote.'}</p>
+              <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Seasonal savings unavailable: the 47-farmer survey does not establish the quantity basis or season. Plan cost excludes labour and transport.</p>
             </div>
-
-            {/* Reasons / evidence */}
-            <div className="text-sm">
-              {(rec.confidence === 'LOW' || rec.confidence === 'MEDIUM') && rec.flags.length > 0 && (
-                <div className="mb-3">
-                  <p className="text-xs font-semibold text-accent mb-1.5">{t('dash.reducedConfidence')}</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {rec.flags.map((flag, i) => {
-                      const label = flag.split(/[:(]/, 1)[0].trim().replace(/_/g, ' ');
-                      return (
-                        <span key={i} title={flag} className="text-[11px] font-medium text-accent bg-accent-bg border border-accent/30 rounded-full px-2 py-0.5 cursor-help">
-                          {label}
-                        </span>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-              {rec.estimatedCost != null && (
-                <div className="mb-2">
-                  <span className="text-xs text-muted">{t('dash.estCost')}: </span>
-                  <span className="font-bold text-foreground">₹{Math.round(rec.estimatedCost).toLocaleString()}</span>
-                  {rec.costCitation && <span className="block text-[10px] text-muted mt-0.5">{t('dash.engineeringEstimate')}</span>}
-                </div>
-              )}
-              {rec.citation && (
-                <p className="text-[11px] text-muted italic">{t('dash.source')}: {rec.citation}</p>
-              )}
-              {voiceUnavailable && (
-                <p className="text-[10px] text-accent mt-1">
-                  {language === 'hi' ? 'इस ब्राउज़र में हिंदी आवाज़ उपलब्ध नहीं — डिफ़ॉल्ट आवाज़ में सुना जाएगा।' : 'या ब्राउझरमध्ये मराठी आवाज उपलब्ध नाही — डीफॉल्ट आवाजात ऐकवले जाईल.'}
-                </p>
-              )}
-            </div>
+            <Link href={'/simulator?field=' + encodeURIComponent(field.id)} className="no-print inline-flex min-h-11 items-center rounded-lg border border-primary px-4 py-2 text-sm font-semibold text-primary">Compare in simulator →</Link>
           </div>
-
-          <div className="flex flex-wrap items-center gap-3 mt-6 no-print">
-            <Link href={`/simulator?field=${encodeURIComponent(field.id)}`} className="inline-flex items-center gap-2 bg-primary hover:bg-primary-hover text-white text-sm font-semibold px-5 py-2.5 gov-panel transition">
-              {t('dash.simulateInWhatIf')}
-            </Link>
-            <button onClick={handlePrint} className="inline-flex items-center gap-2 border border-border hover:border-primary text-foreground text-sm font-semibold px-5 py-2.5 gov-panel transition">
-              {t('dash.downloadPrint')}
-            </button>
-            <button
-              onClick={handleListen}
-              className={`inline-flex items-center gap-2 border text-sm font-semibold px-5 py-2.5 gov-panel transition ${
-                speaking ? "border-primary bg-primary/10 text-primary animate-pulse" : "border-border hover:border-primary text-foreground"
-              }`}
-            >
-              <Volume2 className="w-4 h-4" />
-              {speaking ? t('dash.stop') : t('dash.listen')}
-            </button>
-          </div>
+          {nextActions.length > 0 && <div className="mt-4"><h3 className="text-sm font-semibold">What we need next</h3><ul className="mt-2 list-disc space-y-2 pl-5 text-sm text-muted">{nextActions.map((action) => <li key={action}>{action}</li>)}</ul></div>}
         </>
       )}
-    </div>
+      <div className="no-print mt-5 flex flex-wrap items-center gap-3">
+        <button type="button" onClick={() => window.print()} className="min-h-11 rounded-lg border border-border px-4 py-2 text-sm font-semibold hover:bg-surface-hover">{t('dash.downloadPrint')}</button>
+        <button type="button" onClick={handleListen} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-semibold hover:bg-surface-hover"><Volume2 className="h-4 w-4" />{speaking ? t('dash.stop') : t('dash.listen')}</button>
+        {voiceUnavailable && <p role="status" className="text-xs text-amber-800">The requested language voice may not be installed in this browser. The browser’s available voice will be used.</p>}
+      </div>
+      {proofSelection && <ProofTrace proof={proof} fieldId={field.id} selection={proofSelection} onClose={() => setProofSelection(null)} />}
+    </section></LocalizedText>
   );
 }
 
@@ -483,7 +387,7 @@ function OverrideForm({
   }
 
   return (
-    <div className="mt-3 gov-panel border border-primary/30 bg-primary/5 p-4">
+    <LocalizedText><div className="mt-3 gov-panel border border-primary/30 bg-primary/5 p-4">
       <p className="text-xs font-bold uppercase tracking-wide text-primary mb-3">Agronomist Override</p>
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
         {Object.entries(values).map(([key, val]) => (
@@ -520,7 +424,7 @@ function OverrideForm({
           Cancel
         </button>
       </div>
-    </div>
+    </div></LocalizedText>
   );
 }
 
@@ -542,7 +446,7 @@ function HistoryOversightPanel({ fieldId, onOverridden }: { fieldId: string; onO
   const latest = history?.[0];
 
   return (
-    <div className="lg:col-span-3 bg-surface gov-panel border border-border shadow-sm p-5">
+    <LocalizedText><div className="lg:col-span-3 bg-surface gov-panel border border-border shadow-sm p-5">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <History className="w-4 h-4 text-primary" />
@@ -598,7 +502,7 @@ function HistoryOversightPanel({ fieldId, onOverridden }: { fieldId: string; onO
           {expanded ? 'Show less' : `Show all ${history.length} entries`}
         </button>
       )}
-    </div>
+    </div></LocalizedText>
   );
 }
 
@@ -626,7 +530,7 @@ function DashboardField() {
       })
       .catch((err) => {
         if (err instanceof DOMException && err.name === 'AbortError') return;
-        const message = err instanceof ApiError ? err.message : 'Could not reach the AgroTwin backend.';
+        const message = err instanceof ApiError ? err.message : 'Could not reach the Kisan Saathi backend.';
         setError(message);
         setLoading(false);
       });
@@ -700,7 +604,7 @@ function DashboardField() {
   if (!field) return null;
 
   return (
-    <div className="min-h-screen bg-background font-sans">
+    <LocalizedText><div className="min-h-screen bg-background font-sans">
 
       {error && (
         <div className="bg-red-50 border-b border-red-200 text-red-700 text-xs px-4 py-2 text-center">
@@ -1032,11 +936,12 @@ function DashboardField() {
         </div>
 
         {/* Recommendation History & Agronomist Oversight — real endpoints, never surfaced before */}
+        <ApplicationHistory key={field.id} fieldId={field.id} onRecorded={() => fetchTwin()} />
         <HistoryOversightPanel fieldId={field.id} onOverridden={() => fetchTwin()} />
 
       </div>
       </>)}
-    </div>
+    </div></LocalizedText>
   );
 }
 

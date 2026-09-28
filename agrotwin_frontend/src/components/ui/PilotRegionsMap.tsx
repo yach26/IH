@@ -26,7 +26,7 @@ export default function PilotRegionsMap({ className = "w-full h-[420px]" }: Pilo
   const [regions, setRegions] = React.useState<PilotRegion[]>(PILOT_REGIONS);
 
   useEffect(() => {
-    fetch('http://localhost:8000/fields')
+    fetch('/api/backend/fields')
       .then(r => r.json())
       .then((data: { field_code?: string; lat?: number; lon?: number; crop_code?: string }[]) => {
         // Only plot fields with a real recorded lat/lon — never invent

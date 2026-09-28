@@ -209,7 +209,7 @@ class RecommendationPipeline:
             )
         elif previous_plan:
             twin["weather"] = previous_plan.get("weather_context") or {}
-            twin["data_quality"]["has_weather"] = True
+            twin["data_quality"]["has_weather"] = bool(twin["weather"].get("snapshot"))
 
         # ── 6. Ledger (the only place nutrient gaps are born) ───────────
         if "ledger" in requested:
@@ -321,6 +321,17 @@ class RecommendationPipeline:
             }
         )
 
+        hard_failures = [v for v in violations if v.severity == "HARD" and not v.passed
+                         and "WEATHER" not in v.rule_id]
+        if hard_failures:
+            return self._abstain(
+                conn, twin, ledger=ledger_result,
+                reason="Agronomic constraints failed: " + "; ".join(v.message for v in hard_failures),
+                required_actions=["Review the nutrient inputs and product constraints with an agronomist."],
+                mode=mode, agents_run=agents_run, audit=audit,
+                emit_events=emit_events, persist=persist,
+            )
+
         # Weather conflict → safer plan (defer window), not silent ABSTAIN
         status = ledger_result.get("status") or "PLAN_GENERATED"
         if mode == "partial_replan":
@@ -355,6 +366,9 @@ class RecommendationPipeline:
                 extra_query=extra,
                 top_k=4,
             )
+            evidence = [item for item in evidence if item.get("source_file") not in ("NONE", "RAG_ERROR")]
+            if not evidence:
+                twin["flags"].append("EVIDENCE_UNAVAILABLE: no applicable retrieved document; agronomic review required")
             twin["evidence"] = evidence
             audit.append({"step": "knowledge", "n_chunks": len(evidence)})
 
@@ -507,7 +521,7 @@ class RecommendationPipeline:
         rows = conn.execute(
             """SELECT recommendation_id, plan_json, status, generated_at, invalidated_at
                FROM recommendations WHERE field_id = ?
-               ORDER BY generated_at DESC LIMIT 10""",
+               ORDER BY generated_at DESC, recommendation_id DESC LIMIT 10""",
             (field_id,),
         ).fetchall()
         out = []

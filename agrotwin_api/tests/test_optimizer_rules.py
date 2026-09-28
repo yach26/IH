@@ -39,8 +39,8 @@ class TestHeuristicOptimizer:
     def test_estimate_cost_uses_config_prices(self):
         total, currency, cite = estimate_cost({"UREA_kg_ha": 10, "DAP_kg_ha": 0, "MOP_kg_ha": 0})
         assert currency == "INR"
-        assert total == 60.0  # 10 * 6.0
-        assert "Gap #8" in cite
+        assert total == 59.22  # 10 kg at INR 266.50 per 45 kg bag
+        assert "IFFCO" in cite and "not a current Kolhapur" in cite
 
 
 class TestRuleEngine:

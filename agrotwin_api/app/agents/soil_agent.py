@@ -55,10 +55,11 @@ def get_soil_context(conn: sqlite3.Connection, field_id: int) -> dict | None:
         test_date = date.fromisoformat(str(ctx["test_date"]))
         days_since = (date.today() - test_date).days
     except (ValueError, TypeError):
-        days_since = 0  # defensive: unknown date → assume fresh
+        days_since = None
+        flags.append("SOIL_DATE_UNKNOWN: freshness cannot be verified")
 
     ctx["days_since_test"] = days_since
-    ctx["is_stale"] = days_since > STALE_SOIL_DAYS
+    ctx["is_stale"] = days_since is None or days_since < 0 or days_since > STALE_SOIL_DAYS
 
     if ctx["is_stale"]:
         flags.append(
