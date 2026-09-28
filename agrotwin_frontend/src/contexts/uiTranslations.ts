@@ -184,12 +184,12 @@ Yield effect is not calculated.|उपज पर प्रभाव की ग�
 Seasonal savings versus farmer practice cannot be calculated because the 47-farmer survey does not establish the quantity basis or season.|47 किसानों के सर्वेक्षण में मात्रा का आधार या मौसम स्पष्ट नहीं है, इसलिए मौसमी बचत नहीं निकाली जा सकती।|47 शेतकऱ्यांच्या सर्वेक्षणात प्रमाणाचा आधार किंवा हंगाम स्पष्ट नाही, म्हणून हंगामी बचत मोजता येत नाही.
 Previous fertilizer applications|पहले किए गए उर्वरक उपयोग|आधी केलेले खताचे वापर
 Record what was actually applied. Recommendations are not proof of application. Missing history does not mean no fertilizer was used.|वास्तव में दिया गया उर्वरक दर्ज करें। सिफारिश उपयोग का प्रमाण नहीं है। इतिहास न होने का अर्थ उर्वरक न देना नहीं है।|प्रत्यक्ष दिलेल्या खताची नोंद करा. शिफारस हा वापराचा पुरावा नाही. इतिहास नसणे म्हणजे खत दिले नाही असे नाही.
-Loading application history?|उर्वरक उपयोग का इतिहास लोड हो रहा है…|खत वापराचा इतिहास लोड होत आहे…
+Loading application history...|उर्वरक उपयोग का इतिहास लोड हो रहा है…|खत वापराचा इतिहास लोड होत आहे…
 No applications recorded for this field.|इस खेत में उर्वरक उपयोग दर्ज नहीं है।|या शेतासाठी खत वापराची नोंद नाही.
 Select product|उत्पाद चुनें|उत्पादन निवडा
 Application date|उपयोग की तारीख|वापराची तारीख
 Quantity (kg/ha)|मात्रा (kg/ha)|प्रमाण (kg/ha)
-Saving?|सहेजा जा रहा है…|जतन होत आहे…
+Saving...|सहेजा जा रहा है…|जतन होत आहे…
 Record application|उर्वरक उपयोग दर्ज करें|खत वापर नोंदवा
 Kisan Saathi · Evidence-based recommendation|किसान साथी · प्रमाण आधारित सिफारिश|किसान साथी · पुराव्यावर आधारित शिफारस
 Generate new recommendation|नई सिफारिश बनाएँ|नवीन शिफारस तयार करा
@@ -301,10 +301,10 @@ Resolved|समाधान हुआ|निराकरण झाले
 ALL|सभी|सर्व
 No|कोई नहीं|नाही
 alerts recorded across any field yet.|अभी किसी खेत की चेतावनी दर्ज नहीं है।|अद्याप कोणत्याही शेताची सूचना नोंदवलेली नाही.
-Pilot demo ? sample data|पायलट डेमो — नमूना डेटा|पायलट नमुना — नमुना डेटा
+Pilot demo — sample data|पायलट डेमो — नमूना डेटा|पायलट नमुना — नमुना डेटा
 These preloaded records demonstrate the app. They are not your farm or your uploaded soil results. This view is read-only.|ये पहले से दर्ज रिकॉर्ड ऐप का प्रदर्शन करते हैं। ये आपका खेत या आपकी रिपोर्ट नहीं हैं। यहाँ केवल देखा जा सकता है।|या आधीच्या नोंदी ॲपचे प्रात्यक्षिक आहेत. हे तुमचे शेत किंवा तुमचा अहवाल नाही. येथे फक्त पाहता येते.
 Set up my own field|अपना खेत दर्ज करें|माझे शेत नोंदवा
-Loading pilot examples?|पायलट नमूने लोड हो रहे हैं…|पायलट नमुने लोड होत आहेत…
+Loading pilot examples...|पायलट नमूने लोड हो रहे हैं…|पायलट नमुने लोड होत आहेत…
 No pilot examples available.|पायलट नमूने उपलब्ध नहीं।|पायलट नमुने उपलब्ध नाहीत.
 Sample record|नमूना रिकॉर्ड|नमुना नोंद
 Sample soil score:|नमूना मृदा स्कोर:|नमुना मातीचे गुण:

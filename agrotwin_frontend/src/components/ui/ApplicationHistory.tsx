@@ -18,9 +18,9 @@ export default function ApplicationHistory({ fieldId, onRecorded }: { fieldId: s
   return <section className="rounded-xl border border-border bg-white p-5 space-y-3">
     <h2 className="text-lg font-bold">Previous fertilizer applications</h2>
     <p className="text-sm text-muted">Record what was actually applied. Recommendations are not proof of application. Missing history does not mean no fertilizer was used.</p>
-    {!loaded && !error && <p>Loading application history?</p>}
-    {loaded && !rows.length && <p>No applications recorded for this field.</p>}
-    <ul>{rows.map(row => <li key={row.application_id}>{row.application_date}: {row.product_code}, {row.quantity_kg_ha} kg/ha</li>)}</ul>
+    {!loaded && !error && <p className="text-sm text-muted">Loading application history...</p>}
+    {loaded && !rows.length && <p className="text-sm text-muted">No applications recorded for this field.</p>}
+    <ul className="space-y-1 text-sm">{rows.map(row => <li key={row.application_id} className="bg-surface p-2 rounded border border-border text-foreground">{row.application_date}: <span className="font-semibold">{row.product_code}</span>, {row.quantity_kg_ha} kg/ha</li>)}</ul>
     <form className="flex flex-wrap items-end gap-3" onSubmit={async event => {
       event.preventDefault(); const form = event.currentTarget; const data = new FormData(form);
       setBusy(true); setError(""); setMessage("");
@@ -31,11 +31,11 @@ export default function ApplicationHistory({ fieldId, onRecorded }: { fieldId: s
       } catch (err) { setError(err instanceof Error ? err.message : "Application could not be saved."); }
       finally { setBusy(false); }
     }}>
-      <label className="grid text-sm gap-1">Product<select name="product" required defaultValue="" className="border rounded p-2"><option value="" disabled>Select product</option>{products.map(p => <option key={p.product_code} value={p.product_code}>{p.product_name}</option>)}</select></label>
-      <label className="grid text-sm gap-1">Application date<input name="date" type="date" required className="border rounded p-2" /></label>
-      <label className="grid text-sm gap-1">Quantity (kg/ha)<input name="quantity" type="number" min="0.01" step="any" required className="border rounded p-2 w-32" /></label>
-      <button disabled={busy || !loaded} className="bg-primary text-white rounded px-4 py-2 disabled:opacity-50">{busy ? "Saving?" : "Record application"}</button>
+      <label className="grid text-sm gap-1 flex-1 min-w-[140px]">Product<select name="product" required defaultValue="" className="border rounded p-2 text-sm bg-white text-foreground"><option value="" disabled>Select product</option>{products.map(p => <option key={p.product_code} value={p.product_code}>{p.product_name}</option>)}</select></label>
+      <label className="grid text-sm gap-1 flex-1 min-w-[130px]">Application date<input name="date" type="date" required className="border rounded p-2 text-sm bg-white text-foreground max-w-full" /></label>
+      <label className="grid text-sm gap-1 flex-1 min-w-[100px]">Quantity (kg/ha)<input name="quantity" type="number" min="0.01" step="any" required className="border rounded p-2 text-sm bg-white text-foreground max-w-full" /></label>
+      <button disabled={busy || !loaded} className="bg-primary text-white font-medium text-sm rounded px-4 py-2 min-h-[40px] w-full sm:w-auto disabled:opacity-50">{busy ? "Saving..." : "Record application"}</button>
     </form>
-    {error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}
+    {error && <p role="alert" className="text-sm text-red-600 font-medium">{error}</p>}{message && <p role="status" className="text-sm text-green-700 font-medium">{message}</p>}
   </section>;
 }
