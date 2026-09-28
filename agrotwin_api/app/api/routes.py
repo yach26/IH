@@ -7,7 +7,10 @@ import os
 import sqlite3
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from fastapi.responses import StreamingResponse
 from datetime import datetime
+import io
+from gtts import gTTS
 
 from ..agents import soil_report_agent
 from ..agents import weather_agent
@@ -985,3 +988,24 @@ def list_all_alerts(
         (limit,),
     ).fetchall()
     return [dict(r) for r in rows]
+
+@router.post("/tts")
+async def text_to_speech(
+    text: str = Query(...),
+    lang: str = Query("hi")
+):
+    """
+    Fallback TTS endpoint.
+    Accepts raw text and a language code (hi, mr, en).
+    Returns an audio/mpeg stream.
+    Note: 'mr' (Marathi) is natively supported by gTTS (Google Translate API).
+    """
+    tts_lang = lang if lang in ["hi", "mr", "en"] else "hi"
+    try:
+        tts = gTTS(text=text, lang=tts_lang, slow=False)
+        fp = io.BytesIO()
+        tts.write_to_fp(fp)
+        fp.seek(0)
+        return StreamingResponse(fp, media_type="audio/mpeg")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"TTS generation failed: {e}")

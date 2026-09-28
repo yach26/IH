@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { getTwin, getLatestRecommendation, ApiError, type TwinResponse } from "@/lib/api";
 import { useLanguage } from "@/contexts/LanguageContext";
+import TTSButton from "@/components/ui/TTSButton";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -244,6 +245,11 @@ function ReportContent({ fieldId }: { fieldId: string }) {
     { label: "Soil pH", score: null, unit: "", value: soilDetail.ph },
     { label: "Organic Carbon (OC)", score: null, unit: "%", value: soilDetail.oc_percent },
   ];
+
+  const ttsScript = `Kisan Saathi field report for ${twin.fieldId}. ` +
+    (isAbstain ? `No plan available. ${cp.reason}. ` : `The fertilizer plan is ${cp.status}. `) +
+    `Nutrient gap for Nitrogen is ${nutrientRows[0].gap ?? 0}, Phosphorus is ${nutrientRows[1].gap ?? 0}, Potassium is ${nutrientRows[2].gap ?? 0}. ` +
+    `Next steps are: ${nextSteps.join(" ")}`;
 
   return (
     <div className="max-w-4xl mx-auto px-4 md:px-6 py-8 space-y-8 print:space-y-6">
@@ -483,6 +489,7 @@ function ReportContent({ fieldId }: { fieldId: string }) {
 
       {/* ── Actions ── */}
       <div className="flex gap-3 flex-wrap print:hidden">
+        <TTSButton textToRead={ttsScript} />
         <button onClick={() => window.print()} className="inline-flex items-center gap-2 min-h-11 bg-primary hover:bg-primary-hover text-white text-sm font-semibold px-5 py-2 rounded-lg">
           <Printer className="w-4 h-4" aria-hidden="true" /> {t("rpt.print")}
         </button>

@@ -15,6 +15,7 @@ import ProofTrace from '@/components/ui/ProofTrace';
 import ApplicationHistory from '@/components/ui/ApplicationHistory';
 import { Volume2, History, ShieldCheck } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
+import TTSButton from '@/components/ui/TTSButton';
 
 const FieldMap = dynamic(() => import('@/components/ui/FieldMap'), { ssr: false });
 
@@ -198,8 +199,6 @@ function OfficialRecommendationPanel({
   const rec = field.recommendation;
   const proof = field.proof;
   const [proofSelection, setProofSelection] = React.useState<string | null>(null);
-  const [speaking, setSpeaking] = React.useState(false);
-  const [voiceUnavailable, setVoiceUnavailable] = React.useState(false);
   const isAbstain = rec.status === 'ABSTAIN' || rec.status === 'ABSTAINED';
   const isNoData = rec.status === 'NO_DATA';
   const fertilizerEntries = Object.entries(rec.fertilizerBreakdown).filter(([, value]) => value > 0);
@@ -212,30 +211,9 @@ function OfficialRecommendationPanel({
     'Confirm soil measurements and the current crop stage before generating again.',
   ] : [];
 
-  React.useEffect(() => () => {
-    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
-  }, []);
-
-  function handleListen() {
-    if (!('speechSynthesis' in window)) { setVoiceUnavailable(true); return; }
-    if (speaking) { window.speechSynthesis.cancel(); setSpeaking(false); return; }
-    const targetLang = ({ en: 'en-IN', hi: 'hi-IN', mr: 'mr-IN' })[language];
-    const voices = window.speechSynthesis.getVoices();
-    const match = voices.find((voice) => voice.lang === targetLang) || voices.find((voice) => voice.lang.startsWith(targetLang.slice(0, 2)));
-    setVoiceUnavailable(language !== 'en' && !match);
-    const utterance = new SpeechSynthesisUtterance([
-      'Kisan Saathi. ' + field.id + '.',
-      isAbstain || isNoData ? rec.reason || 'No recommendation is available yet.' : rec.action + '. ' + rec.quantity + '. ' + rec.applicationWindow + '.',
-      'Confidence: ' + rec.confidence + '.',
-      ...nextActions,
-    ].join(' '));
-    utterance.lang = targetLang;
-    if (match) utterance.voice = match;
-    utterance.onend = () => setSpeaking(false);
-    utterance.onerror = () => setSpeaking(false);
-    window.speechSynthesis.speak(utterance);
-    setSpeaking(true);
-  }
+  const ttsScript = `Kisan Saathi. ${field.id}. ` + 
+    (isAbstain || isNoData ? (rec.reason || 'No recommendation is available yet.') : `${rec.action}. ${rec.quantity}. ${rec.applicationWindow}.`) +
+    ` Confidence: ${rec.confidence}. ` + nextActions.join(' ');
 
   function answerHeading(number: number, title: string) {
     return <h2 className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-muted"><span className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">{number}</span>{title}</h2>;
@@ -327,8 +305,7 @@ function OfficialRecommendationPanel({
       )}
       <div className="no-print mt-5 flex flex-wrap items-center gap-3">
         <button type="button" onClick={() => window.print()} className="min-h-11 rounded-lg border border-border px-4 py-2 text-sm font-semibold hover:bg-surface-hover">{t('dash.downloadPrint')}</button>
-        <button type="button" onClick={handleListen} className="inline-flex min-h-11 items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-semibold hover:bg-surface-hover"><Volume2 className="h-4 w-4" />{speaking ? t('dash.stop') : t('dash.listen')}</button>
-        {voiceUnavailable && <p role="status" className="text-xs text-amber-800">The requested language voice may not be installed in this browser. The browser’s available voice will be used.</p>}
+        <TTSButton textToRead={ttsScript} />
       </div>
       {proofSelection && <ProofTrace proof={proof} fieldId={field.id} selection={proofSelection} onClose={() => setProofSelection(null)} />}
     </section>
