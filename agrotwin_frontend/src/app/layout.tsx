@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Merriweather, Noto_Sans } from "next/font/google";
 import "./globals.css";
 import TopNavigation from "@/components/layout/TopNavigation";
 import PageTransition from "@/components/layout/PageTransition";
+import Footer from "@/components/layout/Footer";
 import { LanguageProvider } from "@/contexts/LanguageContext";
 
 const geistSans = Geist({
@@ -13,6 +14,20 @@ const geistSans = Geist({
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+});
+
+// Government-document typography: a serious serif for headings, a clean
+// sans (with Devanagari support for Marathi/Hindi) for body text.
+const merriweather = Merriweather({
+  variable: "--font-heading",
+  subsets: ["latin"],
+  weight: ["700", "900"],
+});
+
+const notoSans = Noto_Sans({
+  variable: "--font-body",
+  subsets: ["latin", "devanagari"],
+  weight: ["400", "500", "600", "700"],
 });
 
 export const metadata: Metadata = {
@@ -26,7 +41,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" suppressHydrationWarning className={`${geistSans.variable} ${geistMono.variable} scroll-smooth`}>
+    <html lang="en" suppressHydrationWarning className={`${geistSans.variable} ${geistMono.variable} ${merriweather.variable} ${notoSans.variable} scroll-smooth`}>
       <body suppressHydrationWarning className="min-h-screen flex flex-col bg-background text-foreground font-sans">
         <LanguageProvider>
           <TopNavigation />
@@ -35,6 +50,7 @@ export default function RootLayout({
               {children}
             </PageTransition>
           </main>
+          <Footer />
         </LanguageProvider>
       </body>
     </html>

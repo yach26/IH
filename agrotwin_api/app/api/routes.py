@@ -10,11 +10,14 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from datetime import datetime
 
 from ..agents import soil_report_agent
+from ..agents import weather_agent
+from ..agents.crop_agent import resolve_dynamic_stage
 from ..agents.monitoring_agent import get_alerts, get_monitoring_agent
 from ..agents.orchestrator import request_replan, run_orchestrated_ledger
 from ..core.event_bus import get_bus
 from ..core.events import Event
 from .schemas import (
+    ApplicationIn,
     CropAssignRequest,
     EventIn,
     FarmerCreateRequest,
@@ -76,11 +79,7 @@ def _get_rdf_targets(conn: sqlite3.Connection, crop_code: str, rec_type: str):
     """Returns (n_kg_ha, p2o5_kg_ha, k2o_kg_ha) from the same authoritative
     fertilizer_recommendations table the ledger/optimizer use, or None if no
     RDF row exists for this crop/stage. Never invent a universal target."""
-    import sys as _sys
-    _api_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    if _api_root not in _sys.path:
-        _sys.path.insert(0, _api_root)
-    from ledger import get_recommendation as _get_recommendation
+    from ..ledger import get_recommendation as _get_recommendation
 
     rec = _get_recommendation(conn, crop_code, rec_type)
     if rec is None:
@@ -106,6 +105,25 @@ def _field_row(conn: sqlite3.Connection, field_ref: str) -> sqlite3.Row:
         row = conn.execute(base_query.format(col="field_code"), (field_ref,)).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail=f"Field not found: {field_ref}")
+
+    # Make current_stage dynamic: derive it from real elapsed time
+    # (today - sowing_date) against the sourced crop_calendars table instead
+    # of trusting a value that was only ever set once at crop-assign time and
+    # then never advanced. Persisted so every consumer of this row (ledger,
+    # pipeline, /twin, /what-if) sees the same corrected value with no
+    # per-caller changes. Falls back to the declared stage when there's no
+    # sowing_date or no seeded calendar for the crop (e.g. Soybean) — never
+    # invents a stage without a sourced calendar to derive it from.
+    if row["current_crop_id"] is not None:
+        computed = resolve_dynamic_stage(conn, row["current_crop_id"], row["sowing_date"])
+        if computed and computed["stage_name"] != row["current_stage"]:
+            conn.execute(
+                "UPDATE field_crops SET current_stage = ? WHERE field_id = ? AND crop_id = ? AND is_active = 1",
+                (computed["stage_name"], row["field_id"], row["current_crop_id"]),
+            )
+            conn.commit()
+            row = conn.execute(base_query.format(col="field_id"), (row["field_id"],)).fetchone()
+
     return row
 
 
@@ -130,13 +148,13 @@ def get_twin(field_id: str, conn: sqlite3.Connection = Depends(get_conn)):
     row = _field_row(conn, field_id)
     soil = conn.execute(
         """SELECT * FROM soil_tests WHERE field_id = ?
-           ORDER BY test_date DESC LIMIT 1""",
+           ORDER BY test_date DESC, soil_test_id DESC LIMIT 1""",
         (row["field_id"],),
     ).fetchone()
     
     rec = conn.execute(
         """SELECT * FROM recommendations WHERE field_id = ?
-           ORDER BY generated_at DESC LIMIT 1""",
+           ORDER BY generated_at DESC, recommendation_id DESC LIMIT 1""",
         (row["field_id"],),
     ).fetchone()
     
@@ -185,6 +203,30 @@ def get_twin(field_id: str, conn: sqlite3.Connection = Depends(get_conn)):
             except json.JSONDecodeError:
                 weather_payload = None
 
+    # Neither a persisted snapshot nor an injected event exists yet — this
+    # previously left weather permanently "unavailable" for any field until
+    # someone ran the full /recommend pipeline at least once, even though the
+    # weather agent only ever needed the field's own lat/lon (it doesn't
+    # depend on soil test, crop, or recommendation state at all). Fetch and
+    # persist a real snapshot right here so a field with real coordinates
+    # shows real weather on its very first /twin call, not just after a
+    # recommendation has been generated.
+    if weather_payload is None and row["lat"] is not None and row["lon"] is not None:
+        try:
+            ctx = weather_agent.get_weather_context(
+                conn, row["field_id"], float(row["lat"]), float(row["lon"]), force_refresh=False
+            )
+            snap = ctx.get("snapshot")
+            if snap:
+                weather_payload = {
+                    "rainfall_mm_next_7d": snap["rainfall_mm_next_7d"],
+                    "heavy_rain_alert": bool(snap["heavy_rain_alert"]),
+                }
+        except Exception:
+            # Network/API failure — fall through to the honest "unavailable"
+            # state below rather than raising a 500 out of a GET /twin call.
+            weather_payload = None
+
     # Soil health score / N-P-K sufficiency requires a crop-aware nutrient target.
     # Reuse the SAME authoritative RDF lookup the ledger/optimizer use
     # (fertilizer_recommendations, keyed by crop_code + recommendation_type) —
@@ -197,6 +239,10 @@ def get_twin(field_id: str, conn: sqlite3.Connection = Depends(get_conn)):
     ph_val = soil["ph"] if soil else None
     oc_val = soil["oc_percent"] if soil else None
 
+    from ..core.nutrients import normalize, CONVERSION_SOURCE
+    normalized = normalize(n_val, p_val, k_val)
+    n_val, p_val, k_val = normalized["N"], normalized["P2O5"], normalized["K2O"]
+
     crop_code_for_rdf = dict(row).get("crop_code_str")
     rec_type_for_rdf = dict(row).get("recommendation_type")
     rdf_targets = None
@@ -207,9 +253,9 @@ def get_twin(field_id: str, conn: sqlite3.Connection = Depends(get_conn)):
     soil_health_score = None
     if soil is not None and rdf_targets is not None:
         target_n, target_p2o5, target_k2o = rdf_targets
-        n_score = min(100, round((n_val / target_n) * 100)) if target_n else None
-        p_score = min(100, round((p_val / target_p2o5) * 100)) if target_p2o5 else None
-        k_score = min(100, round((k_val / target_k2o) * 100)) if target_k2o else None
+        n_score = min(100, round((n_val / target_n) * 100)) if target_n and n_val is not None else None
+        p_score = min(100, round((p_val / target_p2o5) * 100)) if target_p2o5 and p_val is not None else None
+        k_score = min(100, round((k_val / target_k2o) * 100)) if target_k2o and k_val is not None else None
         if n_score is not None and p_score is not None and k_score is not None:
             soil_health_score = round((n_score * 0.4 + p_score * 0.3 + k_score * 0.3))
 
@@ -225,8 +271,13 @@ def get_twin(field_id: str, conn: sqlite3.Connection = Depends(get_conn)):
         "SUGARCANE": ["Land Prep", "Germination", "Tillering", "Grand Growth", "Ripening", "Harvest"],
         "RICE":      ["Nursery", "Transplanting", "Tillering", "Panicle Init", "Flowering", "Maturity"],
         "SOYBEAN":   ["Emergence", "Vegetative", "Flowering", "Pod Fill", "Maturity", "Harvest"],
+        "COTTON":    ["Germination", "Squaring", "Boll Development", "Boll Opening", "Harvest"],
+        "BANANA":    ["Rhizome Establishment", "Vegetative", "Bunch Initiation", "Shooting", "Bunch Filling", "Harvest"],
     }
-    crop_code_upper = (dict(row).get("crop_name") or "").upper()
+    # crop_code_str (e.g. "COTTON"), not crop_name (e.g. "Cotton (Bt)") — the
+    # latter never matches this lookup and silently produced an empty
+    # stageSequence/blank stage for every Cotton field.
+    crop_code_upper = (dict(row).get("crop_code_str") or "").upper()
     stages = stage_sequence.get(crop_code_upper, [])
     current_stage_raw = dict(row).get("current_stage") or ""
     stage_display_map = {
@@ -235,6 +286,9 @@ def get_twin(field_id: str, conn: sqlite3.Connection = Depends(get_conn)):
         "NURSERY": "Nursery", "TRANSPLANTING": "Transplanting",
         "PANICLE_INIT": "Panicle Init", "FLOWERING": "Flowering", "MATURITY": "Maturity",
         "EMERGENCE": "Emergence", "VEGETATIVE": "Vegetative", "POD_FILL": "Pod Fill",
+        "SQUARING": "Squaring", "BOLL_DEVELOPMENT": "Boll Development", "BOLL_OPENING": "Boll Opening",
+        "RHIZOME_ESTABLISHMENT": "Rhizome Establishment", "BUNCH_INITIATION": "Bunch Initiation",
+        "SHOOTING": "Shooting", "BUNCH_FILLING": "Bunch Filling",
     }
     current_stage_display = stage_display_map.get(current_stage_raw, current_stage_raw.replace("_", " ").title())
 
@@ -262,16 +316,18 @@ def get_twin(field_id: str, conn: sqlite3.Connection = Depends(get_conn)):
         "hasSoilTest": soil is not None,
         "soilHealthScore": soil_health_score,
         "soilDetail": {
-            "ph": round(ph_val, 2) if ph_val else None,
-            "oc_percent": round(oc_val, 3) if oc_val else None,
+            "ph": round(ph_val, 2) if ph_val is not None else None,
+            "oc_percent": round(oc_val, 3) if oc_val is not None else None,
             "n_score": n_score,
             "p_score": p_score,
             "k_score": k_score,
         },
+        "nutrientBasis": "N/P2O5/K2O",
+        "conversionSource": CONVERSION_SOURCE,
         "nutrients": {
-            "n": {"current": n_val, "target": rdf_targets[0] if rdf_targets else None, "unit": "kg/ha"},
-            "p": {"current": p_val, "target": rdf_targets[1] if rdf_targets else None, "unit": "kg/ha"},
-            "k": {"current": k_val, "target": rdf_targets[2] if rdf_targets else None, "unit": "kg/ha"},
+            "n": {"current": n_val, "target": rdf_targets[0] if rdf_targets else None, "unit": "kg N/ha"},
+            "p": {"current": p_val, "target": rdf_targets[1] if rdf_targets else None, "unit": "kg P2O5/ha"},
+            "k": {"current": k_val, "target": rdf_targets[2] if rdf_targets else None, "unit": "kg K2O/ha"},
         },
         "currentPlan": {
             # `plan` (the persisted proof) sets what/when/why/how_much to an explicit
@@ -350,7 +406,7 @@ def latest_recommendation(field_id: str, conn: sqlite3.Connection = Depends(get_
     row = _field_row(conn, field_id)
     rec = conn.execute(
         """SELECT * FROM recommendations WHERE field_id = ?
-           ORDER BY generated_at DESC LIMIT 1""",
+           ORDER BY generated_at DESC, recommendation_id DESC LIMIT 1""",
         (row["field_id"],),
     ).fetchone()
     if rec is None:
@@ -364,6 +420,50 @@ def latest_recommendation(field_id: str, conn: sqlite3.Connection = Depends(get_
     plan["superseded_by"] = rec["superseded_by"]
     plan["recommendation_id"] = rec["recommendation_id"]
     return plan
+
+
+@router.get("/fields/{field_id}/recommendations")
+def recommendation_history(
+    field_id: str,
+    limit: int = Query(20, ge=1, le=100),
+    conn: sqlite3.Connection = Depends(get_conn),
+):
+    """
+    Every recommendation ever generated for this field, most recent first —
+    the audit trail for the Recommendation History / Oversight panel. Reuses
+    the same `recommendations` rows the ledger/monitoring agent already
+    write; this is a read-only view over existing data, not a new concept.
+    """
+    row = _field_row(conn, field_id)
+    rows = conn.execute(
+        """SELECT recommendation_id, generated_at, status, confidence, confidence_reason,
+                  total_cost_estimate, invalidated_at, superseded_by, plan_json
+           FROM recommendations WHERE field_id = ?
+           ORDER BY generated_at DESC, recommendation_id DESC LIMIT ?""",
+        (row["field_id"], limit),
+    ).fetchall()
+
+    history = []
+    for r in rows:
+        try:
+            plan = _json_load(r["plan_json"])
+        except json.JSONDecodeError:
+            plan = {}
+        history.append({
+            "recommendation_id": r["recommendation_id"],
+            "generated_at": r["generated_at"],
+            "status": r["status"],
+            "confidence": r["confidence"],
+            "confidence_reason": r["confidence_reason"],
+            "total_cost_estimate": r["total_cost_estimate"],
+            "invalidated_at": r["invalidated_at"],
+            "superseded_by": r["superseded_by"],
+            "what": plan.get("what"),
+            "how_much": plan.get("how_much"),
+            "when": plan.get("when"),
+            "reason": plan.get("reason"),
+        })
+    return {"field_id": row["field_id"], "history": history}
 
 
 @router.get("/fields/{field_id}/alerts")
@@ -540,6 +640,12 @@ def confirm_soil_report(
     """
     Step 2: Farmer confirms the OCR values. Save to twin and trigger event.
     """
+    if any(getattr(body.soil_test, key) is None for key in ("n_kg_ha", "p_kg_ha", "k_kg_ha")):
+        raise HTTPException(status_code=422, detail="Confirm all three soil nutrients N, P and K")
+    from ..core.nutrients import elemental
+    body.soil_test.p_kg_ha, body.soil_test.k_kg_ha = elemental(
+        body.soil_test.p_kg_ha, body.soil_test.k_kg_ha,
+        p_basis=body.soil_test.p_basis, k_basis=body.soil_test.k_basis)
     row = _field_row(conn, field_id)
     if body.upload_id:
         upload = soil_report_agent.get_upload(conn, body.upload_id)
@@ -614,7 +720,7 @@ def what_if_simulator(
     # Get current plan
     current_rec = conn.execute(
         """SELECT plan_json FROM recommendations WHERE field_id = ? AND status = 'PROPOSED'
-           ORDER BY generated_at DESC LIMIT 1""",
+           ORDER BY generated_at DESC, recommendation_id DESC LIMIT 1""",
         (row["field_id"],)
     ).fetchone()
     
@@ -663,7 +769,7 @@ def what_if_simulator(
         if not plan:
             return {
                 "fertilizer": "N/A", "rainfall": "N/A", "yieldBand": "N/A",
-                "confidence": "N/A", "cost": 0,
+                "confidence": "N/A", "cost": None,
                 "modelSignals": { "growthStage": dict(row).get("current_stage") or "Initial", "vigor": "N/A", "nutrientSufficiency": "N/A", "waterStress": "N/A" }
             }
         # fertilizer formatted string
@@ -676,12 +782,18 @@ def what_if_simulator(
             if mock_weather["rainfall_mm_next_7d"] > 50: rainfall = "Heavy"
             elif mock_weather["rainfall_mm_next_7d"] < 10: rainfall = "Low"
 
-        # Yield band
-        yield_val = dict(row).get("target_yield_kg_ha") or 4000
-        yield_t = float(yield_val) / 1000
-        if is_simulated and body.fertilizer_delta_pct and body.fertilizer_delta_pct < 0:
-            yield_t *= 0.95 # Mock reduction for visualization
-        yield_band = f"{round(yield_t * 0.95, 1)}-{round(yield_t * 1.05, 1)} t/ha"
+        # Yield band — a labelled directional scenario estimate derived from the
+        # field's own target_yield_kg_ha, never a fabricated default. No real
+        # yield-prediction model backs this; if the field has no target yield
+        # on record, we say so instead of guessing 4000 kg/ha.
+        yield_val = dict(row).get("target_yield_kg_ha")
+        if yield_val is None:
+            yield_band = "Not available (no target yield on record for this field)"
+        else:
+            yield_t = float(yield_val) / 1000
+            if is_simulated and body.fertilizer_delta_pct and body.fertilizer_delta_pct < 0:
+                yield_t *= 0.95  # directional scenario adjustment, not a model output
+            yield_band = f"{round(yield_t * 0.95, 1)}-{round(yield_t * 1.05, 1)} t/ha (scenario estimate)"
 
         # Vigor and stress
         vigor = "thriving"
@@ -696,7 +808,13 @@ def what_if_simulator(
             "rainfall": rainfall,
             "yieldBand": yield_band,
             "confidence": plan.get("confidence", "HIGH"),
-            "cost": plan.get("cost", 1200) if not is_simulated else (plan.get("cost", 1200) * (1 + (body.fertilizer_delta_pct or 0)/100.0)),
+            # Cost is null (not a fabricated 1200) when the plan carries no real
+            # cost figure — never invent an engineering-default price.
+            "cost": (
+                None if plan.get("cost") is None
+                else plan["cost"] if not is_simulated
+                else round(plan["cost"] * (1 + (body.fertilizer_delta_pct or 0) / 100.0), 2)
+            ),
             "modelSignals": {
                 "growthStage": dict(row).get("current_stage") or "Initial",
                 "vigor": vigor,
@@ -725,6 +843,30 @@ def agronomist_override(
     now = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S")
 
     cur = conn.cursor()
+
+    # The proof object this overridden plan replaces — reused for its `when`
+    # (application window) and `based_on` (citation/cost) fields so overriding
+    # the quantities doesn't blank out everything else /twin displays. Only
+    # `how_much`, `what`, `status`, `confidence`, and `reason` are agronomist-set.
+    original_row = conn.execute(
+        "SELECT plan_json FROM recommendations WHERE recommendation_id = ?",
+        (body.recommendation_id,),
+    ).fetchone()
+    try:
+        original_plan = _json_load(original_row["plan_json"]) if original_row else {}
+    except json.JSONDecodeError:
+        original_plan = {}
+
+    what_str = " + ".join(k.removesuffix("_kg_ha").replace("_", " ") for k in body.new_plan)
+    override_plan = {
+        **original_plan,
+        "status": "PLAN_GENERATED",
+        "what": what_str or original_plan.get("what"),
+        "how_much": body.new_plan,
+        "confidence": "HIGH",
+        "reason": f"Agronomist override: {body.reason}",
+    }
+
     # Mark old as superseded
     cur.execute(
         """UPDATE recommendations SET status = 'SUPERSEDED', invalidated_at = ?
@@ -734,10 +876,10 @@ def agronomist_override(
 
     # Insert new
     cur.execute(
-        """INSERT INTO recommendations 
+        """INSERT INTO recommendations
            (field_id, plan_json, status, confidence, confidence_reason, is_synthetic)
            VALUES (?, ?, 'PROPOSED', 'HIGH', 'Agronomist Override', false)""",
-        (row["field_id"], json.dumps(body.new_plan))
+        (row["field_id"], json.dumps(override_plan))
     )
     new_rec_id = cur.lastrowid
     
@@ -893,6 +1035,40 @@ def onboarding_options(conn: sqlite3.Connection = Depends(get_conn)):
                ORDER BY c.crop_code, cc.stage_order"""
         ).fetchall()],
     }
+
+
+@router.get("/fields/{field_id}/applications")
+def application_history(field_id: str, conn=Depends(get_conn)):
+    row = _field_row(conn, field_id)
+    rows = conn.execute("""SELECT a.*, p.product_code FROM applications a
+        LEFT JOIN fertilizer_products p ON p.product_id = a.product_id
+        WHERE a.field_id = ? ORDER BY a.application_date DESC, a.application_id DESC""", (row["field_id"],)).fetchall()
+    return {"status": "RECORDED" if rows else "NO_RECORDED_APPLICATIONS", "applications": [dict(r) for r in rows]}
+
+
+@router.get("/fertilizer-products")
+def fertilizer_products(conn=Depends(get_conn)):
+    return [dict(r) for r in conn.execute("SELECT product_code, product_name FROM fertilizer_products ORDER BY product_name").fetchall()]
+
+
+@router.post("/fields/{field_id}/applications", status_code=201)
+def record_application(field_id: str, body: ApplicationIn, conn=Depends(get_conn)):
+    row = _field_row(conn, field_id)
+    product = conn.execute("SELECT * FROM fertilizer_products WHERE product_code = ?", (body.product_code,)).fetchone()
+    if product is None:
+        raise HTTPException(status_code=422, detail="Select a registered fertilizer product")
+    q = body.quantity_kg_ha
+    cur = conn.execute("""INSERT INTO applications
+        (field_id, product_id, application_date, quantity_kg_ha, n_supplied_kg_ha, p2o5_supplied_kg_ha, k2o_supplied_kg_ha, notes)
+        VALUES (?,?,?,?,?,?,?,?)""", (row["field_id"], product["product_id"], body.application_date, q,
+        q * float(product["n_percent"]) / 100, q * float(product["p2o5_percent"]) / 100,
+        q * float(product["k2o_percent"]) / 100, body.notes))
+    application_id = cur.lastrowid
+    conn.commit()
+    get_monitoring_agent().bind(conn)
+    get_bus().publish(Event.create("FERTILIZER_APPLIED", field_id=row["field_id"], field_code=row["field_code"],
+        payload={"application_id": application_id}, actor="farmer"), conn=conn)
+    return {"status": "RECORDED", "application_id": application_id}
 
 
 @router.post("/upload-soil-report")

@@ -84,3 +84,37 @@ def get_days_after_planting(sowing_date_str: str | None) -> int | None:
         return (date.today() - sd).days
     except (ValueError, TypeError):
         return None
+
+
+def resolve_dynamic_stage(conn: sqlite3.Connection, crop_id: int, sowing_date_str: str | None) -> dict | None:
+    """
+    Computes the field's growth stage from real elapsed time (today - sowing_date)
+    against crop_calendars (sourced day-ranges, see seed_data.seed_crop_calendars).
+
+    Returns None when there's nothing to compute from (no sowing_date, or no
+    calendar seeded for this crop — e.g. SOYBEAN, which has no calendar in the
+    source doc) — callers must fall back to the declared/stored current_stage
+    in that case, never guess a stage.
+
+    Before harvest-window start it also returns None (the field hasn't reached
+    day 0 of any seeded stage yet — caller keeps its own pre-planting label,
+    e.g. "Land Prep"). After the last stage's day range, it stays on the last
+    stage (post-harvest / fallow) rather than falling off the calendar.
+    """
+    days = get_days_after_planting(sowing_date_str)
+    if days is None:
+        return None
+    entries = conn.execute(
+        """SELECT stage_name, stage_order, days_after_planting_min, days_after_planting_max
+           FROM crop_calendars WHERE crop_id = ? ORDER BY stage_order""",
+        (crop_id,),
+    ).fetchall()
+    if not entries:
+        return None
+    if days < entries[0]["days_after_planting_min"]:
+        return None
+    for e in entries:
+        if e["days_after_planting_min"] <= days <= e["days_after_planting_max"]:
+            return {"stage_name": e["stage_name"], "days_after_planting": days}
+    last = entries[-1]
+    return {"stage_name": last["stage_name"], "days_after_planting": days}

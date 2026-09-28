@@ -359,6 +359,21 @@ class RecommendationPipeline:
             audit.append({"step": "knowledge", "n_chunks": len(evidence)})
 
         # ── 10. Confidence ──────────────────────────────────────────────
+        # Soil/validation/rules agents each flag issues independently (e.g.
+        # STALE_SOIL_DATA can be raised by soil_agent, validation_agent and
+        # rules.py for the same underlying soil test) — dedupe by the leading
+        # code before scoring so one real issue isn't double-counted or
+        # double-displayed.
+        seen_codes = set()
+        deduped_flags = []
+        for flag in twin["flags"]:
+            code = flag.split(" (", 1)[0].split(":", 1)[0]
+            if code in seen_codes:
+                continue
+            seen_codes.add(code)
+            deduped_flags.append(flag)
+        twin["flags"] = deduped_flags
+
         agents_run.append("confidence")
         twin["confidence"] = compute_confidence(twin["flags"])
         if twin["confidence"] == "ABSTAIN":

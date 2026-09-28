@@ -15,13 +15,35 @@ export class ApiError extends Error {
   }
 }
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE_URL}${path}`, {
-    headers: init?.body && !(init.body instanceof FormData)
-      ? { "Content-Type": "application/json", ...(init?.headers || {}) }
-      : init?.headers,
-    ...init,
-  });
+  const method = (init?.method || "GET").toUpperCase();
+  const isRetryable = method === "GET" && !init?.signal?.aborted;
+
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE_URL}${path}`, {
+      headers: init?.body && !(init.body instanceof FormData)
+        ? { "Content-Type": "application/json", ...(init?.headers || {}) }
+        : init?.headers,
+      ...init,
+    });
+  } catch (err) {
+    // A dev-server / connection hiccup throws before any response — a real
+    // HTTP error (4xx/5xx) does not. One silent retry on a plain GET clears
+    // the transient case instead of surfacing "Failed to fetch" to the user.
+    if (!isRetryable || init?.signal?.aborted) throw err;
+    await sleep(500);
+    res = await fetch(`${API_BASE_URL}${path}`, {
+      headers: init?.body && !(init.body instanceof FormData)
+        ? { "Content-Type": "application/json", ...(init?.headers || {}) }
+        : init?.headers,
+      ...init,
+    });
+  }
   if (!res.ok) {
     let detail = res.statusText;
     try {
@@ -106,7 +128,7 @@ export interface WhatIfPlanSide {
   rainfall: string;
   yieldBand: string;
   confidence: string;
-  cost: number;
+  cost: number | null;
   modelSignals: {
     growthStage: string;
     vigor: string;
@@ -124,6 +146,7 @@ export interface WhatIfResponse {
 export interface Alert {
   alert_id: number;
   field_id: number;
+  field_code?: string | null;
   alert_type: string;
   severity: string | null;
   message: string | null;
@@ -215,8 +238,31 @@ export function getLatestRecommendation(fieldId: string): Promise<Record<string,
   return request(`/fields/${encodeURIComponent(fieldId)}/recommendations/latest`);
 }
 
+export interface RecommendationHistoryEntry {
+  recommendation_id: number;
+  generated_at: string;
+  status: string;
+  confidence: string | null;
+  confidence_reason: string | null;
+  total_cost_estimate: number | null;
+  invalidated_at: string | null;
+  superseded_by: number | null;
+  what: string | null;
+  how_much: Record<string, number> | null;
+  when: string | null;
+  reason: string | null;
+}
+
+export function getRecommendationHistory(fieldId: string, limit = 20): Promise<{ field_id: number; history: RecommendationHistoryEntry[] }> {
+  return request(`/fields/${encodeURIComponent(fieldId)}/recommendations?limit=${limit}`);
+}
+
 export function getAlerts(fieldId: string): Promise<{ alerts: Alert[] }> {
   return request(`/fields/${encodeURIComponent(fieldId)}/alerts`);
+}
+
+export function getAllAlerts(limit = 50): Promise<Alert[]> {
+  return request(`/alerts?limit=${limit}`);
 }
 
 export function whatIf(

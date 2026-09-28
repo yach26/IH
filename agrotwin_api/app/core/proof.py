@@ -40,6 +40,9 @@ def _what(how_much: dict[str, float]) -> str:
 
 def _when(weather: dict[str, Any], revised: bool) -> dict[str, Any]:
     today = date.today()
+    if not weather.get("snapshot") and not weather.get("heavy_rain_alert"):
+        return {"code": "WEATHER_UNAVAILABLE", "label": "Timing not weather-validated. Obtain a current field forecast before applying.",
+                "window_start": None, "window_end": None, "revised": revised}
     if weather.get("heavy_rain_alert"):
         start = today + timedelta(days=7)
         end = start + timedelta(days=3)
@@ -112,9 +115,11 @@ def assemble_proof(
             or (
                 "Heavy rain alert — application deferred"
                 if weather.get("heavy_rain_alert")
-                else "Suitable application window identified (no heavy-rain alert)"
+                else "Timing not weather-validated" if not weather.get("snapshot") else "Forecast checked for heavy-rain risk; dry conditions are not guaranteed"
             ),
-            "history": f"{len(twin.get('history') or [])} prior recommendation(s) on file",
+            "history": ledger.get("application_history"),
+            "normalized_soil": ledger.get("normalized_soil"),
+            "nutrient_units": "kg/ha N, P2O5, K2O",
             "gap": ledger.get("gap"),
             "required": ledger.get("required"),
         },
@@ -125,6 +130,8 @@ def assemble_proof(
                 f"field_id: {twin.get('field_id')}",
             ],
             "evidence": evidence,
+            "application_history": ledger.get("application_history"),
+            "conversion_source": ledger.get("conversion_source"),
             "citation": ledger.get("citation"),
             "optimizer": (optimizer_plan or {}).get("optimizer_id"),
             "cost_estimate": (optimizer_plan or {}).get("cost_estimate"),
@@ -171,7 +178,9 @@ def assemble_proof(
         "rainfall_probability": (weather.get("snapshot") or {}).get("rainfall_probability")
         if isinstance(weather.get("snapshot"), dict)
         else weather.get("rainfall_probability"),
-        "source": weather.get("source") or "open-meteo",
+        "source": (weather.get("snapshot") or {}).get("source") or weather.get("source"),
+        "status": weather.get("status", "WEATHER_UNAVAILABLE"),
+        "snapshot": weather.get("snapshot"),
         "flags": weather.get("flags", []),
         "warning": weather.get("warning"),
     }

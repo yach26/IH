@@ -1,20 +1,27 @@
 @import "tailwindcss";
 
 :root {
-  --background: #faf9f6;
-  --foreground: #0f172a;
-  
+  /* Government-portal palette: institutional green + white + muted saffron
+     accent, near-black text for AA contrast. Sharp corners, not rounded SaaS. */
+  --background: #f4f6f3;
+  --foreground: #1a1a1a;
+
   --surface: #ffffff;
-  --surface-hover: #f1f5f9;
-  
-  --primary: #166534;
-  --primary-hover: #14532d;
-  
-  --warning: #c2410c;
-  --warning-bg: #fff7ed;
-  
-  --border: #e2e8f0;
-  --muted: #64748b;
+  --surface-hover: #eef2ec;
+
+  --primary: #0b5e2c;
+  --primary-hover: #08431f;
+
+  --accent: #b45f06;       /* muted saffron/amber — sparing use for alerts/emphasis */
+  --accent-bg: #fdf3e7;
+
+  --warning: #b45f06;
+  --warning-bg: #fdf3e7;
+
+  --border: #d7ddd3;
+  --muted: #55594f;
+
+  --radius-gov: 3px;
 }
 
 @theme inline {
@@ -24,12 +31,15 @@
   --color-surface-hover: var(--surface-hover);
   --color-primary: var(--primary);
   --color-primary-hover: var(--primary-hover);
+  --color-accent: var(--accent);
+  --color-accent-bg: var(--accent-bg);
   --color-warning: var(--warning);
   --color-warning-bg: var(--warning-bg);
   --color-border: var(--border);
   --color-muted: var(--muted);
-  
-  --font-sans: var(--font-geist-sans);
+
+  --font-sans: var(--font-body), var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  --font-serif: var(--font-heading), Georgia, serif;
   --font-mono: var(--font-geist-mono);
 }
 
@@ -40,6 +50,10 @@ body {
   @apply antialiased selection:bg-primary/20;
 }
 
+h1, h2, h3, .font-serif {
+  font-family: var(--font-serif), Georgia, serif;
+}
+
 html {
   scroll-behavior: smooth;
 }
@@ -48,4 +62,21 @@ html {
 :focus-visible {
   outline: 2px solid var(--primary);
   outline-offset: 2px;
+}
+
+/* Government-document look: sharp corners everywhere by default. Cards that
+   opt into Tailwind's rounded-* utilities still win (utility order), this
+   only lowers the baseline away from bubbly SaaS rounding. */
+.gov-panel {
+  border-radius: var(--radius-gov);
+}
+
+.tricolor-bar {
+  height: 4px;
+  background: linear-gradient(to right, #FF9933 0 33%, #FFFFFF 33% 66%, #138808 66% 100%);
+}
+
+@media print {
+  .no-print { display: none !important; }
+  body { background: #fff !important; }
 }

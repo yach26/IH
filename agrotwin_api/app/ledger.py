@@ -15,16 +15,9 @@ CRITICAL: No quantities may be altered here. Calculation lives in ledger.py.
 
 import sqlite3
 import json
-import sys
-import os
+from .core.application_history import residual_credit
 
-# Make root agrotwin_api/ importable when app/ is the cwd or when running
-# from a sub-package (e.g. uvicorn agrotwin_api.app.main:app).
-_api_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-if _api_root not in sys.path:
-    sys.path.insert(0, _api_root)
-
-from ledger import (  # noqa: E402  (import after sys.path manipulation)
+from .core.nutrient_ledger import (
     get_recommendation,
     get_products,
     compute_gap,
@@ -82,7 +75,7 @@ def run_field_ledger(conn: sqlite3.Connection, field_row: sqlite3.Row) -> dict:
 
     # Fetch latest soil test row
     soil_row = conn.execute(
-        """SELECT n_kg_ha, p_kg_ha, k_kg_ha, ph, oc_percent
+        """SELECT n_kg_ha, p_kg_ha, k_kg_ha, ph, oc_percent, test_date
            FROM soil_tests WHERE field_id = ?
            ORDER BY test_date DESC, soil_test_id DESC LIMIT 1""",
         (field_id,),
@@ -97,11 +90,20 @@ def run_field_ledger(conn: sqlite3.Connection, field_row: sqlite3.Row) -> dict:
             "flags": [],
         }
 
+    if any(soil_row[key] is None for key in ("n_kg_ha", "p_kg_ha", "k_kg_ha")):
+        return {"field_id": field_id, "field_code": field_row["field_code"], "status": "ABSTAIN",
+                "reason": "Confirmed soil is missing required N/P/K values.", "flags": []}
+    history = residual_credit(conn, field_id, soil_row["test_date"], field_row["sowing_date"], crop_code)
+    if history["status"] == "REVIEW_REQUIRED":
+        return {"field_id": field_id, "field_code": field_row["field_code"], "status": "ABSTAIN",
+                "reason": history["reason"], "application_history": history, "flags": ["APPLICATION_HISTORY_REVIEW_REQUIRED"]}
+
     # Build the field_meta dict expected by the root ledger
     # (it mimics the CSV row format used by seed_data)
     record_id = field_row["field_code"] or str(field_id)
     field_meta = {
         "field_id": field_id,
+        "credits": history["credits_kg_ha"],
         "crop_code": crop_code,
         "current_stage": field_row["current_stage"] or "UNKNOWN",
         "row": {
@@ -116,6 +118,7 @@ def run_field_ledger(conn: sqlite3.Connection, field_row: sqlite3.Row) -> dict:
 
     result = _run_field_raw(conn, field_id, field_meta, rec_type_map)
 
+    result["application_history"] = history
     # Enrich with field_code for traceability
     result["field_code"] = field_row["field_code"]
     return result
