@@ -414,9 +414,15 @@ function ReportContent({ fieldId }: { fieldId: string }) {
             </div>
           )}
         </div>
-        {cp.costCitation && <p className="text-xs text-muted mt-3">{cp.costCitation}</p>}
-        <p className="text-xs text-muted mt-2 italic">Note: MOP price (₹36/kg) is an engineering assumption, not a verified current market rate. Costs exclude transport, labour and application expenses.</p>
-        <p className="text-xs text-muted mt-1 italic">Savings vs typical practice cannot be shown — the survey denominator (per field / per ha / per season) is unconfirmed.</p>
+        {cp.pricesPerKg && Object.keys(cp.pricesPerKg).length > 0 && (
+          <div className="mt-4 flex flex-wrap gap-x-6 gap-y-1 border-t border-border pt-3">
+            {Object.entries(cp.pricesPerKg).map(([product, price]) => (
+              <p key={product} className="text-xs text-muted">
+                <span className="font-semibold text-foreground">{product.replace(/_/g, " ")}</span>: ₹{price.toFixed(2)}/kg
+              </p>
+            ))}
+          </div>
+        )}
       </Card>
 
       {/* ── Next Steps ── */}

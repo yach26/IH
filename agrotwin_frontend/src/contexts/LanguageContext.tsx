@@ -68,6 +68,44 @@ const translations: Record<Language, Record<string, string>> = {
     'dash.listenPhosphorusIs': 'Phosphorus is', 'dash.listenPotassiumIs': 'Potassium is',
     'dash.listenWeatherIs': 'This week\'s rainfall forecast is', 'dash.listenWeatherNone': 'Weather has not been checked for this field yet.',
     'dash.listenStepsIntro': 'Next steps are:',
+    // Upload page
+    'upload.soilReport': 'Soil Report', 'upload.title': 'Upload and verify your soil test',
+    'upload.step1': 'Upload report', 'upload.step2': 'Review and confirm', 'upload.step3': 'Plan being generated', 'upload.step4': 'View report',
+    'upload.generating': 'Generating fertilizer plan…', 'upload.generatingDesc': 'The recommendation pipeline is running. Your report will open automatically.',
+    // Report page
+    'report.title': 'Fertilizer Analysis Report', 'report.fieldSummary': 'Field Summary', 'report.soilStatus': 'Soil Status',
+    'report.nutrientGap': 'Nutrient Gap', 'report.fertilizerPlan': 'Fertilizer Plan', 'report.appWindow': 'Application Window',
+    'report.cost': 'Estimated Cost', 'report.nextSteps': 'Next Steps', 'report.whyPlan': 'Why This Plan', 'report.evidence': 'Evidence and Citations',
+    'report.whatNext': 'What Happens Next', 'report.print': 'Print / Save PDF', 'report.dashboard': '← Dashboard',
+    'report.deficient': 'Deficient', 'report.optimal': 'Optimal', 'report.excess': 'Excess',
+    'report.abstainTitle': 'A reliable fertilizer plan cannot currently be produced', 'report.required': 'Required before a plan can be issued',
+    'report.uploadNew': 'Upload a new soil report', 'report.listen': 'Listen', 'report.stop': 'Stop',
+    // Insights page
+    'ins.title': 'Fleet-wide Alerts and Events', 'ins.badge': 'Insights', 'ins.loading': 'Loading alerts…',
+    'ins.empty': 'No alerts have been recorded for any field yet.', 'ins.refresh': 'Refresh', 'ins.retry': 'Retry',
+    'ins.resolved': 'Resolved', 'ins.noDetail': 'No detail recorded.',
+    // Command center
+    'cc.title': 'Command Center', 'cc.badge': 'Field Monitoring', 'cc.loading': 'Loading field data…',
+    'cc.noFields': 'No fields found.', 'cc.refresh': 'Refresh', 'cc.planActive': 'Plan active', 'cc.abstained': 'Abstained',
+    'cc.noPlan': 'No plan', 'cc.noSoil': 'No soil test', 'cc.unreachable': 'Unreachable',
+    // Footer
+    'fo.brand': 'Kisan Saathi — Digital Krishi Twin', 'fo.subtitle': 'Farm nutrient decision support · Kolhapur pilot',
+    'fo.helpline': 'Helpline', 'fo.lastUpdated': 'Last updated', 'fo.dataSources': 'Data Sources', 'fo.important': 'Important',
+    'fo.disclaimer': 'The recommendations shown are advisory in nature and are generated from a deterministic nutrient ledger. Consult your local Krishi Sevak / agronomist before final field application.',
+    'fo.accessibility': 'Accessibility Statement', 'fo.reportIssue': 'Report an Issue',
+    // Onboarding
+    'ob.step': 'Step 1 / 3 · Your Field', 'ob.title': 'Tell us about your field',
+    'ob.desc': "Fill in your field details, upload a soil health card and confirm the extracted values. The dashboard will use this confirmed data.",
+    'ob.farmerName': 'Farmer name', 'ob.district': 'District and state', 'ob.selectLoc': 'Select location',
+    'ob.area': 'Field area (hectares)', 'ob.irrigation': 'Irrigation', 'ob.selectIrr': 'Select irrigation',
+    'ob.irrigated': 'Irrigated', 'ob.rainfed': 'Rainfed', 'ob.lat': 'Latitude (optional)', 'ob.lon': 'Longitude (optional)',
+    'ob.crop': 'Crop and season', 'ob.selectCrop': 'Select crop', 'ob.stage': "Crop's current stage",
+    'ob.selectStage': 'Select current stage', 'ob.noStages': 'No supported stages available', 'ob.sowingDate': 'Sowing date',
+    'ob.hint': 'Only supported locations and crop seasons are listed. Leave coordinates blank if unknown.',
+    'ob.reload': 'Reload options', 'ob.saved': 'Field saved. Try again to complete crop details.',
+    'ob.saving': 'Saving field…', 'ob.save': 'Save field and upload soil report',
+    'ob.existing': "Open an existing farmer's field", 'ob.existingDesc': 'Choose a previously registered field.',
+    'ob.openExisting': 'Open registered field', 'ob.choose': 'Select field', 'ob.demo': 'View a separate pilot demo (sample data)',
   },
   hi: {
     'nav.home': 'होम', 'nav.howItWorks': 'यह कैसे काम करता है', 'nav.capabilities': 'क्षमताएं', 'nav.pilotRegions': 'पायलट क्षेत्र', 'nav.resources': 'संसाधन', 'nav.openDashboard': 'डैशबोर्ड खोलें',
@@ -129,7 +167,7 @@ const translations: Record<Language, Record<string, string>> = {
     'report.whatNext': 'आगे क्या होगा', 'report.print': 'प्रिंट / PDF सहेजें', 'report.dashboard': '← डैशबोर्ड',
     'report.deficient': 'कमी', 'report.optimal': 'उचित', 'report.excess': 'अधिक',
     'report.abstainTitle': 'अभी एक विश्वसनीय उर्वरक योजना नहीं बना सकते', 'report.required': 'योजना बनाने से पहले आवश्यक',
-    'report.uploadNew': 'नई मिट्टी रिपोर्ट अपलोड करें',
+    'report.uploadNew': 'नई मिट्टी रिपोर्ट अपलोड करें', 'report.listen': 'सुनें', 'report.stop': 'रोकें',
     // Insights page
     'ins.title': 'बेड़े-व्यापी अलर्ट और घटनाएं', 'ins.badge': 'जानकारी', 'ins.loading': 'अलर्ट लोड हो रहे हैं…',
     'ins.empty': 'किसी भी खेत पर अभी तक कोई अलर्ट दर्ज नहीं हुआ।', 'ins.refresh': 'ताज़ा करें', 'ins.retry': 'पुनः प्रयास',
@@ -217,7 +255,7 @@ const translations: Record<Language, Record<string, string>> = {
     'report.whatNext': 'पुढे काय होणार', 'report.print': 'प्रिंट / PDF जतन करा', 'report.dashboard': '← डॅशबोर्ड',
     'report.deficient': 'कमतरता', 'report.optimal': 'योग्य', 'report.excess': 'जास्त',
     'report.abstainTitle': 'सध्या विश्वासार्ह खत योजना तयार करता येत नाही', 'report.required': 'योजना देण्यापूर्वी आवश्यक',
-    'report.uploadNew': 'नवीन माती अहवाल अपलोड करा',
+    'report.uploadNew': 'नवीन माती अहवाल अपलोड करा', 'report.listen': 'ऐका', 'report.stop': 'थांबवा',
     // Insights page
     'ins.title': 'ताफा-व्यापी सूचना आणि घटना', 'ins.badge': 'माहिती', 'ins.loading': 'सूचना लोड होत आहेत…',
     'ins.empty': 'कोणत्याही शेतावर अद्याप कोणतीही सूचना नोंदवली गेलेली नाही.', 'ins.refresh': 'ताजे करा', 'ins.retry': 'पुन्हा प्रयत्न',

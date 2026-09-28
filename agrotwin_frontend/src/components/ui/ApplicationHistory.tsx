@@ -31,7 +31,7 @@ export default function ApplicationHistory({ fieldId, onRecorded }: { fieldId: s
       } catch (err) { setError(err instanceof Error ? err.message : "Application could not be saved."); }
       finally { setBusy(false); }
     }}>
-      <label className="grid text-sm gap-1 flex-1 min-w-[140px]">Product<select name="product" required defaultValue="" className="border rounded p-2 text-sm bg-white text-foreground"><option value="" disabled>Select product</option>{products.map(p => <option key={p.product_code} value={p.product_code}>{p.product_name}</option>)}</select></label>
+      <label className="grid text-sm gap-1 flex-1 min-w-[190px]">Product<select name="product" required defaultValue="" className="border rounded p-2 text-sm bg-white text-foreground w-full"><option value="" disabled>Select product</option>{products.map(p => <option key={p.product_code} value={p.product_code}>{p.product_name.replace(/_/g, " ")}</option>)}</select></label>
       <label className="grid text-sm gap-1 flex-1 min-w-[130px]">Application date<input name="date" type="date" required className="border rounded p-2 text-sm bg-white text-foreground max-w-full" /></label>
       <label className="grid text-sm gap-1 flex-1 min-w-[100px]">Quantity (kg/ha)<input name="quantity" type="number" min="0.01" step="any" required className="border rounded p-2 text-sm bg-white text-foreground max-w-full" /></label>
       <button disabled={busy || !loaded} className="bg-primary text-white font-medium text-sm rounded px-4 py-2 min-h-[40px] w-full sm:w-auto disabled:opacity-50">{busy ? "Saving..." : "Record application"}</button>

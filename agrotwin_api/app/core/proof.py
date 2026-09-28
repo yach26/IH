@@ -121,6 +121,7 @@ def assemble_proof(
             "cost_estimate": (optimizer_plan or {}).get("cost_estimate"),
             "cost_currency": (optimizer_plan or {}).get("cost_currency"),
             "cost_citation": (optimizer_plan or {}).get("cost_citation"),
+            "prices_inr_per_kg": (optimizer_plan or {}).get("prices_inr_per_kg"),
         },
         "confidence": twin.get("confidence") or ledger.get("confidence") or "LOW",
         "flags": flags,

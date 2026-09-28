@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
-import { whatIf, recommend, type WhatIfResponse, type WhatIfPlanSide } from "@/lib/api";
+import { whatIf, recommend, fieldDisplayName, type WhatIfResponse, type WhatIfPlanSide } from "@/lib/api";
 import { useFieldParam } from "@/lib/useFieldParam";
 import FieldOnboarding from "@/components/ui/FieldOnboarding";
 
@@ -75,7 +75,7 @@ function Report({ result }: { result: WhatIfResponse }) {
   </div>;
 }
 
-function FieldSimulator({ fieldId }: { fieldId: string }) {
+function FieldSimulator({ fieldId, displayId }: { fieldId: string; displayId: string }) {
   const [delta, setDelta] = useState("0");
   const [rain, setRain] = useState("");
   const [result, setResult] = useState<WhatIfResponse | null>(null);
@@ -102,7 +102,7 @@ function FieldSimulator({ fieldId }: { fieldId: string }) {
   }
   const ready = result?.status === "SIMULATION" && result.original && result.simulated;
   return <main className="mx-auto max-w-5xl space-y-6 p-4 md:p-8">
-    <header><p className="text-sm font-semibold text-emerald-800">Field {fieldId}</p><h1 className="mt-2 text-3xl font-bold">Fertilizer scenario report</h1><p className="mt-3 text-slate-600">See how changing your saved fertilizer mix affects nutrient supply and product cost. This comparison does not record an application.</p><Link className="mt-3 inline-block underline" href={`/dashboard?field=${encodeURIComponent(fieldId)}`}>View field data and Proof Trace</Link></header>
+    <header><p className="text-sm font-semibold text-emerald-800">Field {displayId}</p><h1 className="mt-2 text-3xl font-bold">Fertilizer scenario report</h1><p className="mt-3 text-slate-600">See how changing your saved fertilizer mix affects nutrient supply and product cost. This comparison does not record an application.</p><Link className="mt-3 inline-block underline" href={`/dashboard?field=${encodeURIComponent(fieldId)}`}>View field data and Proof Trace</Link></header>
     <ol aria-label="How the comparison works" className="grid gap-3 text-sm sm:grid-cols-3">{["1. Confirm soil and crop", "2. Generate a baseline plan", "3. Compare nutrients and cost"].map(step => <li key={step} className="rounded-lg border bg-white p-3">{step}</li>)}</ol>
     <form className={panel} onSubmit={e => { e.preventDefault(); void compare(); }}>
       <fieldset disabled={busy} className="flex flex-wrap items-end gap-4 disabled:opacity-60">
@@ -128,7 +128,8 @@ function Simulator() {
   const { fieldId, fields, fieldsError, fieldsLoaded, setFieldId } = useFieldParam();
   if (!fieldsLoaded) return <p className="p-6" role="status">Loading your fields...</p>;
   if (!fieldId) return <FieldOnboarding fields={fields} fieldsError={fieldsError} onSelect={setFieldId}/>;
-  const code = fields.find(field => field.field_code === fieldId || String(field.field_id) === fieldId)?.field_code || fieldId;
-  return <FieldSimulator key={code} fieldId={code}/>;
+  const matched = fields.find(field => field.field_code === fieldId || String(field.field_id) === fieldId);
+  const code = matched?.field_code || fieldId;
+  return <FieldSimulator key={code} fieldId={code} displayId={fieldDisplayName(code, matched?.field_id)}/>;
 }
 export default function SimulatorPage() { return <Suspense fallback={<p>Loading field...</p>}><Simulator/></Suspense>; }

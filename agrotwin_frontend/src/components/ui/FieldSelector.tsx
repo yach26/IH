@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { Check, ChevronDown, Sprout, Wheat } from "lucide-react";
-import type { FieldSummary } from "@/lib/api";
+import { fieldDisplayName, type FieldSummary } from "@/lib/api";
 
 function CropIcon({ crop }: { crop?: string | null }) {
   const Icon = crop && /rice|wheat|maize|paddy|jowar|bajra/i.test(crop) ? Wheat : Sprout;
@@ -60,7 +60,7 @@ export default function FieldSelector({
           if (event.key === "Escape") close();
         }} className="flex items-center gap-2 min-h-11 max-w-full rounded-lg border border-border bg-white px-3 py-2 text-left focus:outline-none focus:ring-2 focus:ring-primary">
         <CropIcon crop={selected?.crop_code} />
-        <span className="min-w-0"><span className="block truncate text-xs font-semibold text-foreground">{fieldId || "Select field"}</span><span className="block text-[10px] text-muted">{selected?.crop_code || "Crop unassigned"}</span></span>
+        <span className="min-w-0"><span className="block truncate text-xs font-semibold text-foreground">{selected ? fieldDisplayName(selected.field_code, selected.field_id) : (fieldId || "Select field")}</span><span className="block text-[10px] text-muted">{selected?.crop_code || "Crop unassigned"}</span></span>
         <SoilScore score={selected?.soil_health_score} />
         <ChevronDown aria-hidden="true" className="h-4 w-4 shrink-0 text-muted" />
       </button>
@@ -77,7 +77,7 @@ export default function FieldSelector({
             event.preventDefault(); optionRefs.current[next]?.focus();
           }} onClick={() => { onChange(field.field_code); close(); }} className={`flex w-full items-center gap-2 rounded-lg px-3 py-3 min-h-14 text-left hover:bg-green-50 focus:bg-green-50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary ${field.field_code === fieldId ? "bg-green-50" : ""}`}>
           <CropIcon crop={field.crop_code} />
-          <span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold text-foreground">{field.field_code}</span><span className="text-[11px] text-muted">{field.crop_code || "Crop unassigned"}</span></span>
+          <span className="min-w-0 flex-1"><span className="block truncate text-xs font-semibold text-foreground">{fieldDisplayName(field.field_code, field.field_id)}</span><span className="text-[11px] text-muted">{field.crop_code || "Crop unassigned"}</span></span>
           <SoilScore score={field.soil_health_score} />
           {field.field_code === fieldId && <Check aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-primary" />}
         </button>)}

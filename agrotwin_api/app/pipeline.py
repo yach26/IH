@@ -27,7 +27,7 @@ from .agents import crop_agent, knowledge_agent, soil_agent, weather_agent
 from .agents.twin_state import compute_confidence, make_empty_twin_state
 from .core.event_bus import get_bus
 from .core.events import Event, EventType
-from .core.optimizer import HeuristicOptimizer, Optimizer, OptimizerPlan, get_optimizer
+from .core.optimizer import HeuristicOptimizer, Optimizer, OptimizerPlan, get_optimizer, prices_for_plan
 from .core.proof import assemble_proof
 from .core.rules import RuleEngine
 from .db import _json_load
@@ -273,6 +273,7 @@ class RecommendationPipeline:
                 "cost_estimate": optimizer_plan.cost_estimate,
                 "cost_currency": optimizer_plan.cost_currency,
                 "cost_citation": optimizer_plan.cost_citation,
+                "prices_inr_per_kg": prices_for_plan(optimizer_plan.plan_kg_ha, twin.get("region_id")),
                 "optimizer_id": optimizer_plan.optimizer_id,
                 "message": optimizer_plan.message,
             }

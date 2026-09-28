@@ -2,7 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
-import { getAllAlerts, ApiError, type Alert } from "@/lib/api";
+import { getAllAlerts, fieldDisplayName, ApiError, type Alert } from "@/lib/api";
 import { Bell, RefreshCw } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 
@@ -119,7 +119,7 @@ export default function InsightsPage() {
                   <span className="text-xs font-semibold text-foreground">{a.alert_type.replace(/_/g, " ")}</span>
                   {a.field_code && (
                     <Link href={`/dashboard?field=${encodeURIComponent(a.field_code)}`} className="text-xs font-semibold text-primary hover:underline">
-                      {a.field_code}
+                      {fieldDisplayName(a.field_code, a.field_id)}
                     </Link>
                   )}
                   {a.resolved_at && (

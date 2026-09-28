@@ -51,12 +51,12 @@ export default function TTSButton({ textToRead }: { textToRead: string }) {
       {state === "playing" ? (
         <>
           <VolumeX className="w-4 h-4" aria-hidden="true" />
-          <span>Stop</span>
+          <span>{t("report.stop")}</span>
         </>
       ) : (
         <>
           <Volume2 className="w-4 h-4" aria-hidden="true" />
-          <span>{t("report.listen") || "Listen"}</span>
+          <span>{t("report.listen")}</span>
         </>
       )}
     </button>

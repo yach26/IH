@@ -85,6 +85,7 @@ export interface TwinCurrentPlan {
   applicationWindow: string;
   estimatedCost: number | null;
   costCitation: string | null;
+  pricesPerKg: Record<string, number> | null;
   confidence: string;
   citation: string;
   soilGap: Record<string, number>;
@@ -236,6 +237,18 @@ export function recordApplication(fieldId: string, body: { product_code: string;
 
 export function getFields(demo = false): Promise<FieldSummary[]> {
   return request<FieldSummary[]>(demo ? "/fields?demo=true" : "/fields");
+}
+
+/**
+ * Human-facing field label — never the routing key. Pilot demo codes
+ * (REAL-001) are already meaningful and are kept as-is; real onboarded
+ * fields get a stable "FARM-01" sequence number from their numeric id
+ * instead of the random UUID baked into field_code.
+ */
+export function fieldDisplayName(fieldCode: string, fieldId?: number | null): string {
+  if (!fieldCode || /^REAL-\d+$/.test(fieldCode)) return fieldCode;
+  if (fieldId != null) return `FARM-${String(fieldId).padStart(2, "0")}`;
+  return fieldCode;
 }
 
 export interface OnboardingOptions {

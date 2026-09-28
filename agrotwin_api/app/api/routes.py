@@ -6,7 +6,7 @@ import json
 import os
 import sqlite3
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile, File, Query
 from fastapi.responses import StreamingResponse
 from datetime import datetime
 import io
@@ -187,6 +187,24 @@ def get_twin(field_id: str, conn: sqlite3.Connection = Depends(get_conn)):
         except (ValueError, TypeError):
             pass
 
+    # No fresh (<=15 min) cached snapshot — fetch live rather than making the
+    # farmer run a full /recommend just to see this week's forecast. A field
+    # only needs a weather agent RUN recorded, not a run in the last 15 minutes.
+    if weather_payload is None and weather_status != "COORDINATES_MISSING":
+        try:
+            live = weather_agent.get_weather_context(
+                conn, row["field_id"], row["lat"], row["lon"], force_refresh=False
+            )
+            snap = live.get("snapshot")
+            if snap is not None:
+                weather_source = snap.get("source")
+                weather_status = "WEATHER_AVAILABLE" if weather_source == "open-meteo" else "SIMULATED_WEATHER"
+                weather_payload = snap
+            else:
+                weather_status = live.get("status", weather_status)
+        except Exception:
+            pass
+
     # Soil health score / N-P-K sufficiency requires a crop-aware nutrient target.
     # Reuse the SAME authoritative RDF lookup the ledger/optimizer use
     # (fertilizer_recommendations, keyed by crop_code + recommendation_type) —
@@ -286,6 +304,7 @@ def get_twin(field_id: str, conn: sqlite3.Connection = Depends(get_conn)):
             # always fell through to a fake hardcoded 13242.
             "estimatedCost": (plan.get("based_on") or {}).get("cost_estimate") if plan else None,
             "costCitation": (plan.get("based_on") or {}).get("cost_citation") if plan else None,
+            "pricesPerKg": (plan.get("based_on") or {}).get("prices_inr_per_kg") if plan else None,
             "confidence": (plan.get("confidence") if plan else None) or (rec["confidence"] if rec else "N/A"),
             "citation": (plan.get("based_on") or {}).get("citation", "") if plan else "",
             "soilGap": (plan.get("why") or {}).get("gap", {}) if plan else {},
@@ -901,8 +920,21 @@ def fertilizer_products(conn=Depends(get_conn)):
     return [dict(r) for r in conn.execute("SELECT product_code, product_name FROM fertilizer_products ORDER BY product_name").fetchall()]
 
 
+def _replan_after_application(field_id: int, field_code: str, application_id: int) -> None:
+    """Runs the selective replan on its own connection, after the response
+    has already gone back to the farmer — recording an application should
+    not make them wait on a live weather fetch + optimizer run."""
+    bg_conn = get_db_connection()
+    try:
+        get_monitoring_agent().bind(bg_conn)
+        get_bus().publish(Event.create("FERTILIZER_APPLIED", field_id=field_id, field_code=field_code,
+            payload={"application_id": application_id}, actor="farmer"), conn=bg_conn)
+    finally:
+        bg_conn.close()
+
+
 @router.post("/fields/{field_id}/applications", status_code=201)
-def record_application(field_id: str, body: ApplicationIn, conn=Depends(get_conn)):
+def record_application(field_id: str, body: ApplicationIn, background_tasks: BackgroundTasks, conn=Depends(get_conn)):
     row = _field_row(conn, field_id)
     product = conn.execute("SELECT * FROM fertilizer_products WHERE product_code = ?", (body.product_code,)).fetchone()
     if product is None:
@@ -915,9 +947,7 @@ def record_application(field_id: str, body: ApplicationIn, conn=Depends(get_conn
         q * float(product["k2o_percent"]) / 100, body.notes))
     application_id = cur.lastrowid
     conn.commit()
-    get_monitoring_agent().bind(conn)
-    get_bus().publish(Event.create("FERTILIZER_APPLIED", field_id=row["field_id"], field_code=row["field_code"],
-        payload={"application_id": application_id}, actor="farmer"), conn=conn)
+    background_tasks.add_task(_replan_after_application, row["field_id"], row["field_code"], application_id)
     return {"status": "RECORDED", "application_id": application_id}
 
 

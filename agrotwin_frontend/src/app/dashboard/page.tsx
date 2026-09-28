@@ -4,7 +4,7 @@ import React, { Suspense } from 'react';
 import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import {
-  getTwin, recommend, overridePlan, getRecommendationHistory, ApiError,
+  getTwin, recommend, overridePlan, getRecommendationHistory, fieldDisplayName, ApiError,
   type TwinResponse, type RecommendationHistoryEntry, type RecommendationOut,
 } from '@/lib/api';
 import { useFieldParam } from '@/lib/useFieldParam';
@@ -102,6 +102,7 @@ type FieldState = {
     applicationWindow: string;
     estimatedCost: number | null;
     costCitation: string | null;
+    pricesPerKg: Record<string, number> | null;
     confidence: string;
     citation: string;
     status: string;
@@ -174,6 +175,7 @@ function mapTwinToFieldState(data: TwinResponse): FieldState {
       applicationWindow: plan.applicationWindow || 'N/A',
       estimatedCost: plan.estimatedCost ?? null,
       costCitation: plan.costCitation ?? null,
+      pricesPerKg: plan.pricesPerKg ?? null,
       confidence: plan.confidence || '—',
       citation: plan.citation || '',
       status: plan.status || 'NO_DATA',
@@ -188,9 +190,10 @@ function mapTwinToFieldState(data: TwinResponse): FieldState {
 
 // ─── Official Recommendation Panel — the hero of the page ─────────────────────
 function OfficialRecommendationPanel({
-  field, generating, generateError, onGenerate,
+  field, displayId, generating, generateError, onGenerate,
 }: {
   field: FieldState;
+  displayId: string;
   generating: boolean;
   generateError: string | null;
   onGenerate: () => void;
@@ -211,7 +214,7 @@ function OfficialRecommendationPanel({
     'Confirm soil measurements and the current crop stage before generating again.',
   ] : [];
 
-  const ttsScript = `Kisan Saathi. ${field.id}. ` + 
+  const ttsScript = `Kisan Saathi. ${displayId}. ` +
     (isAbstain || isNoData ? (rec.reason || 'No recommendation is available yet.') : `${rec.action}. ${rec.quantity}. ${rec.applicationWindow}.`) +
     ` Confidence: ${rec.confidence}. ` + nextActions.join(' ');
 
@@ -224,7 +227,7 @@ function OfficialRecommendationPanel({
       <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-xs font-bold uppercase tracking-widest text-primary">Kisan Saathi · Evidence-based recommendation</p>
-          <h1 className="mt-2 text-xl font-bold md:text-2xl">{t('dash.fertilizerPlanFor')} {field.id}</h1>
+          <h1 className="mt-2 text-xl font-bold md:text-2xl">{t('dash.fertilizerPlanFor')} {displayId}</h1>
           <p className="mt-1 text-sm text-muted">{field.crop} · {field.stage || 'Growth stage not recorded'}</p>
         </div>
         <button type="button" onClick={onGenerate} disabled={generating} className="no-print min-h-11 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-primary-hover disabled:opacity-60">
@@ -295,8 +298,15 @@ function OfficialRecommendationPanel({
             <div>
               <p className="text-xs font-bold uppercase tracking-wide text-muted">Estimated plan cost</p>
               <p className="mt-1 text-2xl font-bold tabular-nums">{rec.estimatedCost == null ? 'Not available' : '₹' + Math.round(rec.estimatedCost).toLocaleString('en-IN')}<span className="ml-2 text-sm font-normal text-muted">{rec.estimatedCost != null ? 'per hectare' : ''}</span></p>
-              <p className="mt-2 max-w-2xl break-words text-xs text-muted">{rec.costCitation || 'No price source was recorded. Ask your local supplier for a current quote.'}</p>
-              <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Seasonal savings unavailable: the 47-farmer survey does not establish the quantity basis or season. Plan cost excludes labour and transport.</p>
+              {rec.pricesPerKg && Object.keys(rec.pricesPerKg).length > 0 ? (
+                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+                  {Object.entries(rec.pricesPerKg).map(([product, price]) => (
+                    <p key={product} className="text-xs text-muted"><span className="font-semibold text-foreground">{product.replace(/_/g, ' ')}</span>: ₹{price.toFixed(2)}/kg</p>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-2 max-w-2xl break-words text-xs text-muted">No price source was recorded. Ask your local supplier for a current quote.</p>
+              )}
             </div>
             <Link href={'/simulator?field=' + encodeURIComponent(field.id)} className="no-print inline-flex min-h-11 items-center rounded-lg border border-primary px-4 py-2 text-sm font-semibold text-primary">Compare in simulator →</Link>
           </div>
@@ -493,6 +503,7 @@ function DashboardField() {
   const [generating, setGenerating] = React.useState(false);
   const [generateError, setGenerateError] = React.useState<string | null>(null);
   const mapCardRef = React.useRef<HTMLDivElement>(null);
+  const displayFieldId = fieldDisplayName(fieldId, fields.find((entry) => entry.field_code === fieldId)?.field_id);
 
   const fetchTwin = React.useCallback((signal?: AbortSignal) => {
     if (!fieldId) return;
@@ -631,6 +642,7 @@ function DashboardField() {
       {field.hasSoilTest && (
         <OfficialRecommendationPanel
           field={field}
+          displayId={displayFieldId}
           generating={generating}
           generateError={generateError}
           onGenerate={handleGenerateRecommendation}
@@ -662,7 +674,7 @@ function DashboardField() {
 
         <div className="absolute bottom-16 left-5 md:bottom-20">
           <div className="flex items-center gap-3 mb-1">
-            <h1 className="text-3xl md:text-4xl font-bold text-white">Field {field.id}</h1>
+            <h1 className="text-3xl md:text-4xl font-bold text-white">Field {displayFieldId}</h1>
             <span className="bg-green-500 text-white text-xs font-bold px-2.5 py-0.5 rounded-full">{field.status}</span>
           </div>
           <div className="flex items-center gap-1.5 text-white/80 text-sm">
@@ -860,7 +872,7 @@ function DashboardField() {
               <FieldMap
                 lat={field.lat}
                 lng={field.lon}
-                fieldId={field.id}
+                fieldId={displayFieldId}
                 areaLabel={field.area !== '— ha' ? field.area : null}
                 zoom={14}
                 className="w-full h-full min-h-[160px]"

@@ -2,7 +2,7 @@
 
 import React from "react";
 import Link from "next/link";
-import { getFields, getTwin, ApiError, type FieldSummary, type TwinResponse } from "@/lib/api";
+import { getFields, getTwin, fieldDisplayName, ApiError, type FieldSummary, type TwinResponse } from "@/lib/api";
 import { RefreshCw, ShieldAlert } from "lucide-react";
 import { useLanguage } from "@/contexts/LanguageContext";
 
@@ -146,7 +146,7 @@ export default function CommandCenterPage() {
                 {rows.map((row) => {
                   return (
                     <tr key={row.field.field_code} className="border-b border-border last:border-0 hover:bg-surface-hover">
-                      <td className="px-4 py-3 font-semibold text-foreground">{row.field.field_code}</td>
+                      <td className="px-4 py-3 font-semibold text-foreground">{fieldDisplayName(row.field.field_code, row.field.field_id)}</td>
                       <td className="px-4 py-3 text-muted">
                         {row.twin ? `${row.twin.crop || "—"} · ${row.twin.growthStage || "—"}` : (row.field.crop_code || "—")}
                       </td>
