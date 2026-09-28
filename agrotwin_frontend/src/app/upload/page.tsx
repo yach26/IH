@@ -10,6 +10,7 @@ import {
 import { useFieldParam } from "@/lib/useFieldParam";
 import FieldSelector from "@/components/ui/FieldSelector";
 import FieldOnboarding from "@/components/ui/FieldOnboarding";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 const FIELDS = [
   { key: "n_kg_ha", label: "Nitrogen (N)", unit: "kg/ha", required: true, max: undefined },
@@ -32,6 +33,7 @@ function today() {
 type WorkflowStep = 1 | 2 | 3 | 4;
 
 function UploadField() {
+  const { t } = useLanguage();
   const router = useRouter();
   const { fieldId, setFieldId, fields, fieldsError } = useFieldParam();
   const [dragActive, setDragActive] = React.useState(false);
@@ -137,7 +139,7 @@ function UploadField() {
 
   const needsReview = new Set(uploadResult?.fields_needing_review || []);
   const progressLabels: [string, string, string, string] = [
-    "Upload report", "Review and confirm", "Generating plan", "View report"
+    t("upload.step1"), t("upload.step2"), t("upload.step3"), t("upload.step4")
   ];
   const currentStep = generating ? 3 : saved ? 2 : uploadResult ? 2 : 1;
 
@@ -146,8 +148,8 @@ function UploadField() {
       <div className="sticky top-0 z-30 bg-surface border-b border-border px-4 md:px-6 py-4">
         <div className="max-w-3xl mx-auto flex items-center justify-between gap-3 flex-wrap">
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-primary mb-1">Kisan Saathi · Soil report</p>
-            <h1 className="font-serif text-xl font-bold text-foreground">Upload and verify your soil test</h1>
+            <p className="text-[10px] font-bold uppercase tracking-widest text-primary mb-1">Kisan Saathi · {t("upload.soilReport")}</p>
+            <h1 className="font-serif text-xl font-bold text-foreground">{t("upload.title")}</h1>
           </div>
           {fields.length > 0 ? <FieldSelector fieldId={fieldId} fields={fields} onChange={setFieldId} /> : (
             <span className="text-xs text-muted">{fieldsError ? `Field list unavailable (${fieldsError})` : "Loading fields…"}</span>
@@ -167,8 +169,8 @@ function UploadField() {
         {generating && (
           <div role="status" aria-live="polite" className="bg-surface gov-panel border border-border shadow-sm p-10 text-center">
             <LoaderCircle aria-hidden="true" className="w-10 h-10 mx-auto text-primary animate-spin mb-4" />
-            <h2 className="font-serif text-lg font-bold text-foreground mb-2">Generating fertilizer plan…</h2>
-            <p className="text-sm text-muted">Running the recommendation pipeline for {fieldId}. You will be redirected to your report automatically.</p>
+            <h2 className="font-serif text-lg font-bold text-foreground mb-2">{t("upload.generating")}</h2>
+            <p className="text-sm text-muted">{t("upload.generatingDesc")}</p>
           </div>
         )}
 

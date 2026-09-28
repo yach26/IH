@@ -78,20 +78,21 @@ function Card({ children, className = "" }: { children: React.ReactNode; classNa
 function AbstainReport({
   fieldId, reason, requiredActions, flags,
 }: { fieldId: string; reason: string | null; requiredActions: string[]; flags: string[] }) {
+  const { t } = useLanguage();
   return (
     <div className="max-w-3xl mx-auto px-4 md:px-6 py-8 space-y-6">
       <Card className="border-red-200 bg-red-50/30">
         <div className="flex gap-3 items-start">
           <AlertTriangle className="w-6 h-6 text-red-600 shrink-0 mt-0.5" aria-hidden="true" />
           <div>
-            <h2 className="font-bold text-red-800 text-base mb-1">A reliable fertilizer plan cannot currently be produced</h2>
-            <p className="text-sm text-red-700 leading-relaxed">{reason || "The recommendation pipeline abstained. See required actions below."}</p>
+            <h2 className="font-bold text-red-800 text-base mb-1">{t("rpt.abstainTitle")}</h2>
+            <p className="text-sm text-red-700 leading-relaxed">{reason || t("rpt.abstainDesc")}</p>
           </div>
         </div>
       </Card>
       {requiredActions.length > 0 && (
         <Card>
-          <h3 className="font-semibold text-sm mb-3">Required before a plan can be issued</h3>
+          <h3 className="font-semibold text-sm mb-3">{t("rpt.requiredActions")}</h3>
           <ol className="space-y-2">
             {requiredActions.map((action, i) => (
               <li key={i} className="flex gap-2 text-sm text-foreground">
@@ -112,10 +113,10 @@ function AbstainReport({
       )}
       <div className="flex gap-3 flex-wrap">
         <Link href={`/upload?field=${encodeURIComponent(fieldId)}`} className="inline-flex items-center gap-2 min-h-11 bg-primary hover:bg-primary-hover text-white text-sm font-semibold px-5 py-2 rounded-lg">
-          Upload New Soil Report
+          {t("rpt.uploadNew")}
         </Link>
         <Link href={`/dashboard?field=${encodeURIComponent(fieldId)}`} className="inline-flex items-center gap-2 min-h-11 border border-border bg-surface text-foreground text-sm font-semibold px-5 py-2 rounded-lg hover:bg-background">
-          View Dashboard
+          {t("rpt.viewDash")}
         </Link>
       </div>
     </div>
@@ -153,7 +154,7 @@ function ReportContent({ fieldId }: { fieldId: string }) {
     return (
       <div className="flex flex-col items-center justify-center min-h-64 gap-3">
         <LoaderCircle className="w-8 h-8 animate-spin text-primary" aria-hidden="true" />
-        <p className="text-sm text-muted">Loading field report…</p>
+        <p className="text-sm text-muted">{t("rpt.loading")}</p>
       </div>
     );
   }
@@ -161,7 +162,7 @@ function ReportContent({ fieldId }: { fieldId: string }) {
     return (
       <div className="max-w-3xl mx-auto px-4 py-8">
         <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-red-700 text-sm">{error}</div>
-        <Link href={`/dashboard?field=${encodeURIComponent(fieldId)}`} className="mt-4 inline-flex items-center gap-2 text-sm text-primary underline">← View Dashboard</Link>
+        <Link href={`/dashboard?field=${encodeURIComponent(fieldId)}`} className="mt-4 inline-flex items-center gap-2 text-sm text-primary underline">← {t("rpt.viewDash")}</Link>
       </div>
     );
   }
@@ -249,7 +250,7 @@ function ReportContent({ fieldId }: { fieldId: string }) {
 
       {/* ── Field Summary ── */}
       <Card>
-        <SectionHeader icon={<MapPin className="w-4 h-4" />} title="Field Summary" />
+        <SectionHeader icon={<MapPin className="w-4 h-4" />} title={t("rpt.summary")} />
         <dl className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-3 text-sm">
           {[
             ["Field ID", twin.fieldId],
@@ -269,7 +270,7 @@ function ReportContent({ fieldId }: { fieldId: string }) {
 
       {/* ── Soil Status ── */}
       <Card>
-        <SectionHeader icon={<FlaskConical className="w-4 h-4" />} title="Soil Status" />
+        <SectionHeader icon={<FlaskConical className="w-4 h-4" />} title={t("rpt.soilStatus")} />
         {!twin.hasSoilTest ? (
           <p className="text-sm text-muted">No soil test recorded for this field.</p>
         ) : (
@@ -309,7 +310,7 @@ function ReportContent({ fieldId }: { fieldId: string }) {
 
       {/* ── Nutrient Gap ── */}
       <Card>
-        <SectionHeader icon={<TrendingDown className="w-4 h-4" />} title="Nutrient Gap" />
+        <SectionHeader icon={<TrendingDown className="w-4 h-4" />} title={t("rpt.nutrientGap")} />
         <div className="overflow-x-auto">
           <table className="w-full text-sm border-collapse">
             <thead>
@@ -342,7 +343,7 @@ function ReportContent({ fieldId }: { fieldId: string }) {
       <div>
         <div className="flex items-center gap-2 mb-4">
           <Leaf className="w-5 h-5 text-primary" aria-hidden="true" />
-          <h2 className="text-lg font-bold text-foreground uppercase tracking-wide">Fertilizer Plan</h2>
+          <h2 className="text-lg font-bold text-foreground uppercase tracking-wide">{t("rpt.fertPlan")}</h2>
           {cp.status && (
             <span className="text-xs px-2 py-0.5 rounded-full border font-semibold bg-green-50 text-green-700 border-green-200">
               {cp.status.replace(/_/g, " ")}
@@ -483,10 +484,10 @@ function ReportContent({ fieldId }: { fieldId: string }) {
       {/* ── Actions ── */}
       <div className="flex gap-3 flex-wrap print:hidden">
         <button onClick={() => window.print()} className="inline-flex items-center gap-2 min-h-11 bg-primary hover:bg-primary-hover text-white text-sm font-semibold px-5 py-2 rounded-lg">
-          <Printer className="w-4 h-4" aria-hidden="true" /> Print / Save PDF
+          <Printer className="w-4 h-4" aria-hidden="true" /> {t("rpt.print")}
         </button>
         <Link href={`/dashboard?field=${encodeURIComponent(fieldId)}`} className="inline-flex items-center gap-2 min-h-11 border border-border bg-surface text-foreground text-sm font-semibold px-5 py-2 rounded-lg hover:bg-background">
-          ← Dashboard
+          ← {t("rpt.viewDash")}
         </Link>
         <Link href={`/simulator?field=${encodeURIComponent(fieldId)}`} className="inline-flex items-center gap-2 min-h-11 border border-border bg-surface text-foreground text-sm font-semibold px-5 py-2 rounded-lg hover:bg-background">
           What-If Simulator

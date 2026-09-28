@@ -4,6 +4,7 @@ import React from "react";
 import Link from "next/link";
 import { getFields, getTwin, ApiError, type FieldSummary, type TwinResponse } from "@/lib/api";
 import { RefreshCw, ShieldAlert } from "lucide-react";
+import { useLanguage } from "@/contexts/LanguageContext";
 
 type FleetRow = {
   field: FieldSummary;
@@ -20,17 +21,19 @@ function confidenceBadgeClass(confidence: string | undefined): string {
   return "bg-surface-hover text-muted border-border";
 }
 
-function statusLabel(row: FleetRow): { label: string; className: string } {
-  if (row.twinError) return { label: "Unreachable", className: "bg-red-50 text-red-700 border-red-200" };
-  if (!row.twin) return { label: "Loading…", className: "bg-surface-hover text-muted border-border" };
-  if (!row.twin.hasSoilTest) return { label: "No soil test", className: "bg-surface-hover text-muted border-border" };
+function StatusLabel({ row }: { row: FleetRow }) {
+  const { t } = useLanguage();
+  if (row.twinError) return <span className="bg-red-50 text-red-700 border-red-200">{t("cc.unreachable")}</span>;
+  if (!row.twin) return <span className="bg-surface-hover text-muted border-border">{t("cc.loading")}</span>;
+  if (!row.twin.hasSoilTest) return <span className="bg-surface-hover text-muted border-border">{t("cc.noSoil")}</span>;
   const status = row.twin.currentPlan?.status;
-  if (status === "ABSTAIN") return { label: "Abstained", className: "bg-red-50 text-red-700 border-red-200" };
-  if (status === "NO_DATA") return { label: "No plan yet", className: "bg-accent-bg text-accent border-accent/30" };
-  return { label: "Plan active", className: "bg-green-50 text-green-700 border-green-200" };
+  if (status === "ABSTAIN") return <span className="bg-red-50 text-red-700 border-red-200">{t("cc.abstained")}</span>;
+  if (status === "NO_DATA") return <span className="bg-accent-bg text-accent border-accent/30">{t("cc.noPlan")}</span>;
+  return <span className="bg-green-50 text-green-700 border-green-200">{t("cc.planActive")}</span>;
 }
 
 export default function CommandCenterPage() {
+  const { t } = useLanguage();
   const [rows, setRows] = React.useState<FleetRow[] | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
@@ -105,23 +108,23 @@ export default function CommandCenterPage() {
 
         <div className="flex items-center justify-end mb-3">
           <button onClick={fetchFleet} disabled={loading} className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted hover:text-primary transition disabled:opacity-50">
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} /> Refresh fleet
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} /> {t("cc.refresh")}
           </button>
         </div>
 
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 text-sm p-4 gov-panel mb-4">
-            {error} <button onClick={fetchFleet} className="underline font-semibold ml-1">Retry</button>
+            {error} <button onClick={fetchFleet} className="underline font-semibold ml-1">{t("ins.retry")}</button>
           </div>
         )}
 
         {rows === null && !error && (
-          <div className="text-sm text-muted py-10 text-center">Loading fleet…</div>
+          <div className="text-sm text-muted py-10 text-center">{t("cc.loading")}</div>
         )}
 
         {rows !== null && rows.length === 0 && (
           <div className="bg-surface border border-border gov-panel p-10 text-center text-sm text-muted">
-            No fields registered yet.
+            {t("cc.noFields")}
           </div>
         )}
 
@@ -141,7 +144,6 @@ export default function CommandCenterPage() {
               </thead>
               <tbody>
                 {rows.map((row) => {
-                  const st = statusLabel(row);
                   return (
                     <tr key={row.field.field_code} className="border-b border-border last:border-0 hover:bg-surface-hover">
                       <td className="px-4 py-3 font-semibold text-foreground">{row.field.field_code}</td>
@@ -156,9 +158,7 @@ export default function CommandCenterPage() {
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full border ${st.className}`}>
-                          {st.label}
-                        </span>
+                        <StatusLabel row={row} />
                       </td>
                       <td className="px-4 py-3">
                         {row.twin?.currentPlan?.confidence ? (

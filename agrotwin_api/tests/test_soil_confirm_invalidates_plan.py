@@ -12,11 +12,11 @@ from datetime import date
 import pytest
 
 from tests.conftest import make_test_db
-from agrotwin_api.app.agents import monitoring_agent as _ma
-from agrotwin_api.app.agents import soil_report_agent
-from agrotwin_api.app.core.event_bus import get_bus
-from agrotwin_api.app.core.events import EventType
-from agrotwin_api.app.pipeline import RecommendationPipeline
+from app.agents import monitoring_agent as _ma
+from app.agents import soil_report_agent
+from app.core.event_bus import get_bus
+from app.core.events import EventType
+from app.pipeline import RecommendationPipeline
 
 
 def _seed_plan(conn, field_id: int) -> int:
