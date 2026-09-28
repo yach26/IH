@@ -4,7 +4,7 @@ import React, { Suspense } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
-  AlertTriangle, CheckCircle2, ChevronRight, Download,
+  AlertTriangle, CheckCircle2, ChevronRight,
   FlaskConical, Leaf, LoaderCircle, MapPin, Printer,
   ShieldCheck, TrendingDown, TrendingUp, Minus,
 } from "lucide-react";
@@ -135,8 +135,6 @@ function ReportContent({ fieldId }: { fieldId: string }) {
 
   React.useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError(null);
     Promise.all([getTwin(fieldId), getLatestRecommendation(fieldId).catch(() => null)])
       .then(([t, p]) => {
         if (cancelled) return;
@@ -187,7 +185,6 @@ function ReportContent({ fieldId }: { fieldId: string }) {
   // ── Data extraction ──────────────────────────────────────────────────────
   const howMuch = cp.fertilizerBreakdown || {};
   const area = twin.area_ha || 0;
-  const soilGap = cp.soilGap || {};
   const nutrients = twin.nutrients;
   const soilDetail = twin.soilDetail;
 

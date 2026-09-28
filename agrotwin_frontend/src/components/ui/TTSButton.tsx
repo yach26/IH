@@ -1,17 +1,18 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { Volume2, VolumeX, Loader2 } from "lucide-react";
+import React, { useState, useEffect, useSyncExternalStore } from "react";
+import { Volume2, VolumeX } from "lucide-react";
 import { speak, stopSpeech, VoiceState } from "@/lib/voice";
 import { useLanguage } from "@/contexts/LanguageContext";
+
+const emptySubscribe = () => () => {};
 
 export default function TTSButton({ textToRead }: { textToRead: string }) {
   const { language, t } = useLanguage();
   const [state, setState] = useState<VoiceState>("idle");
-  const [mounted, setMounted] = useState(false);
+  const mounted = useSyncExternalStore(emptySubscribe, () => true, () => false);
 
   useEffect(() => {
-    setMounted(true);
     return () => {
       stopSpeech();
     };

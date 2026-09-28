@@ -12,12 +12,8 @@ interface SpeakOptions {
 let currentUtterance: SpeechSynthesisUtterance | null = null;
 let currentAudio: HTMLAudioElement | null = null;
 
-// Ensure voices are loaded
-let voicesLoaded = false;
-if (typeof window !== "undefined" && window.speechSynthesis) {
-  window.speechSynthesis.onvoiceschanged = () => {
-    voicesLoaded = true;
-  };
+export function isSpeaking(): boolean {
+  return currentUtterance !== null || (currentAudio !== null && !currentAudio.paused);
 }
 
 export function stopSpeech() {

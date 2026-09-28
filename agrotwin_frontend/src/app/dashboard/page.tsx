@@ -13,7 +13,7 @@ import FieldOnboarding from '@/components/ui/FieldOnboarding';
 import StageTimeline from '@/components/ui/StageTimeline';
 import ProofTrace from '@/components/ui/ProofTrace';
 import ApplicationHistory from '@/components/ui/ApplicationHistory';
-import { Volume2, History, ShieldCheck } from 'lucide-react';
+import { History, ShieldCheck } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 import TTSButton from '@/components/ui/TTSButton';
 
@@ -195,7 +195,7 @@ function OfficialRecommendationPanel({
   generateError: string | null;
   onGenerate: () => void;
 }) {
-  const { t, language } = useLanguage();
+  const { t } = useLanguage();
   const rec = field.recommendation;
   const proof = field.proof;
   const [proofSelection, setProofSelection] = React.useState<string | null>(null);

@@ -2,7 +2,7 @@
 
 import React, { Suspense } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, FileText, LoaderCircle, UploadCloud } from "lucide-react";
+import { FileText, LoaderCircle, UploadCloud } from "lucide-react";
 import {
   uploadSoilReport, confirmSoilReport, recommend, ApiError,
   type SoilReportUploadResponse, type SoilTestConfirmInput,
@@ -29,9 +29,6 @@ function today() {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
-// Progress steps: upload → review → generating → done
-type WorkflowStep = 1 | 2 | 3 | 4;
-
 function UploadField() {
   const { t } = useLanguage();
   const router = useRouter();
@@ -51,8 +48,6 @@ function UploadField() {
   const [saved, setSaved] = React.useState(false);
   const [generating, setGenerating] = React.useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
-
-  const step: WorkflowStep = generating ? 3 : saved ? 2 : uploadResult ? 2 : 1;
 
   function resetForNewUpload() {
     setUploadResult(null); setUploadError(null); setValues({}); setTestDate("");

@@ -5,15 +5,13 @@ import { useLanguage } from "@/contexts/LanguageContext";
 
 export default function Footer() {
   const pathname = usePathname();
-  if (pathname === "/") return null; // landing page has its own FinalCTA/footer treatment
-
+  const { t } = useLanguage();
+  if (pathname === "/") return null;
   const lastUpdated = new Date().toLocaleDateString("en-IN", {
     day: "2-digit",
     month: "short",
     year: "numeric",
   });
-
-  const { t } = useLanguage();
 
   return (
     <footer className="no-print border-t border-border bg-surface text-[13px] text-muted">
