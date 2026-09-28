@@ -13,6 +13,7 @@ No commit or push was made. No authentication, login, or signup was added.
 7. Weather failures and absent coordinates stay unavailable. Seven-day forecasts require a complete week; aggregate rain does not create invented dry-day dates. Non-weather hard constraint failures abstain.
 8. Browser API calls use a same-origin Next.js proxy; container configuration targets the backend service. SQLite request connections support FastAPI worker-thread handoff. The old duplicate backend is preserved under archive/backend_legacy; root pytest collection targets the active backend.
 9. Product costs are deterministic. Urea uses INR 266.50/45 kg and DAP INR 1350/50 kg from the IFFCO reference below. MOP INR 36/kg is explicitly an engineering assumption. UI explains that seasonal savings cannot be supported by the ambiguous survey quantities.
+10. Localization infrastructure is fully wrapped across the UI using the LanguageContext and translation keys. The translations handle Marathi and Hindi (and fallbacks).
 
 ## Verification
 
