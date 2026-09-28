@@ -268,40 +268,6 @@ You confirm first|पहले आप पुष्टि करें|आधी 
 Recommendations follow your confirmed soil data.|सिफारिशें आपके पुष्ट मृदा डेटा पर आधारित हैं।|शिफारशी तुमच्या पुष्टी केलेल्या माती डेटावर आधारित आहेत.
 Sustainable Fertilizer Support|टिकाऊ उर्वरक सहायता|शाश्वत खत सहाय्य
 Field overview|खेत का अवलोकन|शेताचा आढावा
-Field fertilizer recommendation|खेत की उर्वरक सिफारिश|शेताची खत शिफारस
-Location not provided|स्थान दर्ज नहीं है|ठिकाण नोंदवलेले नाही
-Connection to backend lost — showing last known data|बैकएंड से संपर्क टूट गया — पिछला उपलब्ध डेटा दिखाया जा रहा है|बॅकएंडशी संपर्क तुटला — शेवटचा डेटा दाखवत आहोत
-Could not reach the Kisan Saathi backend.|Kisan Saathi बैकएंड तक पहुँच नहीं हो सकी।|Kisan Saathi बॅकएंडशी संपर्क साधता आला नाही.
-Could not generate a recommendation.|सिफारिश तैयार नहीं हो सकी।|शिफारस तयार करता आली नाही.
-The saved ledger has no remaining actionable nutrient gap.|सहेजे गए पोषक खाते में अब कोई कार्रवाई योग्य कमी नहीं है।|जतन केलेल्या पोषक नोंदीत आता कृतीयोग्य कमतरता नाही.
-The nutrient ledger compares crop requirements with confirmed soil measurements and credited prior applications. The optimizer converts the remaining nutrient gap into fertilizer quantities.|पोषक खाता फसल की आवश्यकता की तुलना पुष्ट मृदा माप और पहले के मान्य उर्वरक उपयोग से करता है। अनुकूलक बची हुई पोषक कमी को उर्वरक की मात्रा में बदलता है।|पोषक नोंद पीक गरजांची तुलना पुष्टी केलेली मातीची मोजमापे आणि आधीच्या मान्य खत वापराशी करते. अनुकूलक उरलेली पोषक कमतरता खताच्या प्रमाणात रूपांतरित करतो.
-Remaining gap:|शेष कमी:|उरलेली कमतरता:
-Confirmed field records, the saved nutrient ledger and retrieved agronomic evidence.|पुष्ट खेत रिकॉर्ड, सहेजा गया पोषक खाता और प्राप्त कृषि प्रमाण।|पुष्टी केलेल्या शेत नोंदी, जतन केलेली पोषक नोंद आणि मिळालेले कृषी पुरावे.
-recorded flags. Open the proof to inspect the data-quality checks.|दर्ज संकेत। डेटा गुणवत्ता जाँचने के लिए प्रमाण खोलें।|नोंदवलेले संकेत. डेटा गुणवत्ता तपासण्यासाठी पुरावे उघडा.
-No RDF citation was recorded for this plan.|इस योजना के लिए RDF संदर्भ दर्ज नहीं किया गया।|या योजनेसाठी RDF संदर्भ नोंदवलेला नाही.
-Growth stage not recorded|फसल की वृद्धि अवस्था दर्ज नहीं है|पिकाची वाढीची अवस्था नोंदवलेली नाही
-Seasonal savings unavailable: the 47-farmer survey does not establish the quantity basis or season. Plan cost excludes labour and transport.|मौसमी बचत उपलब्ध नहीं: 47 किसानों का सर्वेक्षण मात्रा का आधार या मौसम स्पष्ट नहीं करता। योजना की लागत में श्रम और परिवहन शामिल नहीं हैं।|हंगामी बचत उपलब्ध नाही: 47 शेतकऱ्यांच्या सर्वेक्षणातून प्रमाणाचा आधार किंवा हंगाम स्पष्ट होत नाही. योजनेच्या खर्चात मजुरी व वाहतूक समाविष्ट नाही.
-Your confirmed soil test is saved. Check your crop details and application history, then generate the plan.|आपका पुष्ट मृदा परीक्षण सहेजा गया है। फसल की जानकारी और उर्वरक उपयोग का इतिहास जाँचें, फिर योजना बनाएँ।|तुमची पुष्टी केलेली माती चाचणी जतन झाली आहे. पिकाची माहिती व खत वापराचा इतिहास तपासा, मग योजना तयार करा.
-The available evidence does not support a reliable fertilizer plan.|उपलब्ध प्रमाण विश्वसनीय उर्वरक योजना का समर्थन नहीं करता।|उपलब्ध पुरावे विश्वासार्ह खत योजनेला समर्थन देत नाहीत.
-Previous fertilizer applications|पहले किए गए उर्वरक उपयोग|आधी केलेले खताचे वापर
-Application saved. Any residual nutrient credit requires a supported policy; review may be required.|उर्वरक उपयोग सहेजा गया। शेष पोषक श्रेय के लिए समर्थित नीति आवश्यक है; समीक्षा की जरूरत हो सकती है।|खत वापर जतन झाला. उरलेल्या पोषक श्रेयासाठी समर्थित धोरण आवश्यक आहे; पुनरावलोकन लागू शकते.
-Application saved, but history could not refresh. Reload the page; do not submit it again.|उर्वरक उपयोग सहेजा गया, लेकिन इतिहास अपडेट नहीं हो सका। पृष्ठ फिर लोड करें; इसे दोबारा न भेजें।|खत वापर जतन झाला, पण इतिहास अद्ययावत करता आला नाही. पृष्ठ पुन्हा लोड करा; पुन्हा सबमिट करू नका.
-Select field|खेत चुनें|शेत निवडा
-Crop unassigned|फसल दर्ज नहीं है|पीक नोंदवलेले नाही
-Select field. Current field:|खेत चुनें। वर्तमान खेत:|शेत निवडा. सध्याचे शेत:
-Fields|खेत|शेते
-No fields available.|कोई खेत उपलब्ध नहीं।|कोणतेही शेत उपलब्ध नाही.
-Agronomist Override|कृषि विशेषज्ञ द्वारा बदलाव|कृषितज्ज्ञाकडून बदल
-e.g. Farmer reports visible K deficiency symptoms not captured by the soil test.|उदाहरण: किसान ने मिट्टी परीक्षण में दर्ज नहीं हुए K की कमी के लक्षण बताए हैं।|उदा. माती चाचणीत नोंद न झालेली K कमतरतेची लक्षणे शेतकऱ्याने सांगितली.
-Override failed.|बदल दर्ज नहीं हो सका।|बदल नोंदवता आला नाही.
-Could not load recommendation history.|सिफारिश इतिहास लोड नहीं हो सका।|शिफारशींचा इतिहास लोड करता आला नाही.
-Current soil report|वर्तमान मृदा रिपोर्ट|सध्याचा माती अहवाल
-Weather available and checked|मौसम उपलब्ध और जाँचा गया|हवामान उपलब्ध व तपासले
-Crop stage in the supported calendar|समर्थित कैलेंडर में फसल की अवस्था|समर्थित दिनदर्शिकेतील पीक टप्पा
-Micronutrient measurements recorded|सूक्ष्म पोषक माप दर्ज हैं|सूक्ष्म पोषक मोजमाप नोंदवले
-Soil test within freshness threshold|मृदा परीक्षण निर्धारित ताजगी अवधि में है|माती चाचणीची वैधता कालावधीत आहे
-Recommendation type recorded|सिफारिश का प्रकार दर्ज है|शिफारशीचा प्रकार नोंदवला
-The requested language voice may not be installed in this browser. The browser’s available voice will be used.|इस ब्राउज़र में चुनी गई भाषा की आवाज़ इंस्टॉल नहीं हो सकती। ब्राउज़र में उपलब्ध आवाज़ का उपयोग होगा।|या ब्राउझरमध्ये निवडलेल्या भाषेचा आवाज उपलब्ध नसेल. ब्राउझरमधील उपलब्ध आवाज वापरला जाईल.
 Weather agent|मौसम सेवा|हवामान सेवा
 Rain (7d)|वर्षा (7 दिन)|पाऊस (7 दिवस)
 No stage sequence available for this crop.|इस फसल की अवस्थाओं का क्रम उपलब्ध नहीं है।|या पिकासाठी टप्प्यांचा क्रम उपलब्ध नाही.

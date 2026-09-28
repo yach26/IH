@@ -1,10 +1,10 @@
 "use client";
 
 import React, { Suspense } from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { CheckCircle2, FileText, LoaderCircle, UploadCloud } from "lucide-react";
 import {
-  uploadSoilReport, confirmSoilReport, getTwin, ApiError,
+  uploadSoilReport, confirmSoilReport, recommend, ApiError,
   type SoilReportUploadResponse, type SoilTestConfirmInput,
 } from "@/lib/api";
 import { useFieldParam } from "@/lib/useFieldParam";
@@ -28,7 +28,11 @@ function today() {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
+// Progress steps: upload → review → generating → done
+type WorkflowStep = 1 | 2 | 3 | 4;
+
 function UploadField() {
+  const router = useRouter();
   const { fieldId, setFieldId, fields, fieldsError } = useFieldParam();
   const [dragActive, setDragActive] = React.useState(false);
   const [uploading, setUploading] = React.useState(false);
@@ -43,13 +47,15 @@ function UploadField() {
   const [confirming, setConfirming] = React.useState(false);
   const [confirmError, setConfirmError] = React.useState<string | null>(null);
   const [saved, setSaved] = React.useState(false);
-  const [confirmed, setConfirmed] = React.useState(false);
+  const [generating, setGenerating] = React.useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const step: WorkflowStep = generating ? 3 : saved ? 2 : uploadResult ? 2 : 1;
 
   function resetForNewUpload() {
     setUploadResult(null); setUploadError(null); setValues({}); setTestDate("");
     setPBasis(""); setKBasis(""); setVerified(false); setSaved(false);
-    setConfirmed(false); setConfirmError(null); setFileName("");
+    setGenerating(false); setConfirmError(null); setFileName("");
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
@@ -111,15 +117,29 @@ function UploadField() {
         await confirmSoilReport(fieldId, { upload_id: uploadResult.upload_id, soil_test: soilTest });
         hasSaved = true; setSaved(true);
       }
-      await getTwin(fieldId); setConfirmed(true);
+      // Auto-generate recommendation after confirm
+      setConfirming(false);
+      setGenerating(true);
+      try {
+        await recommend(fieldId);
+      } catch {
+        // Even if recommend fails or returns ABSTAIN, navigate to report —
+        // the report page handles ABSTAIN and error states gracefully.
+      }
+      router.push(`/report?field=${encodeURIComponent(fieldId)}`);
     } catch (err) {
       const detail = err instanceof ApiError ? err.message : "Check the connection and try again.";
-      setConfirmError(hasSaved ? `Your soil record was saved, but the refreshed field could not be loaded. ${detail}` : detail);
-    } finally { setConfirming(false); }
+      setConfirmError(hasSaved ? `Your soil record was saved, but the recommendation could not be generated. ${detail}` : detail);
+      setConfirming(false);
+      setGenerating(false);
+    }
   }
 
   const needsReview = new Set(uploadResult?.fields_needing_review || []);
-  const step = confirmed ? 3 : uploadResult ? 2 : 1;
+  const progressLabels: [string, string, string, string] = [
+    "Upload report", "Review and confirm", "Generating plan", "View report"
+  ];
+  const currentStep = generating ? 3 : saved ? 2 : uploadResult ? 2 : 1;
 
   return (
     <div className="min-h-screen bg-background font-sans">
@@ -135,14 +155,24 @@ function UploadField() {
         </div>
       </div>
       <div className="max-w-3xl mx-auto px-4 md:px-6 py-8">
-        <ol aria-label="Soil report progress" className="grid grid-cols-3 gap-2 mb-6 text-xs">
-          {["Upload report", "Review and confirm", "Field updated"].map((label, index) => (
-            <li key={label} aria-current={step === index + 1 ? "step" : undefined} className={`border-t-4 pt-3 ${step >= index + 1 ? "border-primary text-primary font-semibold" : "border-border text-muted"}`}>
+        <ol aria-label="Soil report progress" className="grid grid-cols-4 gap-2 mb-6 text-xs">
+          {progressLabels.map((label, index) => (
+            <li key={label} aria-current={currentStep === index + 1 ? "step" : undefined} className={`border-t-4 pt-3 ${currentStep >= index + 1 ? "border-primary text-primary font-semibold" : "border-border text-muted"}`}>
               {index + 1}. {label}
             </li>
           ))}
         </ol>
-        {!uploadResult && (
+
+        {/* Generating plan state */}
+        {generating && (
+          <div role="status" aria-live="polite" className="bg-surface gov-panel border border-border shadow-sm p-10 text-center">
+            <LoaderCircle aria-hidden="true" className="w-10 h-10 mx-auto text-primary animate-spin mb-4" />
+            <h2 className="font-serif text-lg font-bold text-foreground mb-2">Generating fertilizer plan…</h2>
+            <p className="text-sm text-muted">Running the recommendation pipeline for {fieldId}. You will be redirected to your report automatically.</p>
+          </div>
+        )}
+
+        {!uploadResult && !generating && (
           <div onDragOver={(event) => { event.preventDefault(); if (!uploading) setDragActive(true); }} onDragLeave={() => setDragActive(false)} onDrop={(event) => {
             event.preventDefault(); setDragActive(false);
             const file = event.dataTransfer.files?.[0]; if (file) void handleFile(file);
@@ -161,7 +191,7 @@ function UploadField() {
           </div>
         )}
         {uploadError && <p role="alert" className="mt-4 bg-red-50 border border-red-200 text-red-700 text-sm gov-panel p-4">{uploadError}</p>}
-        {uploadResult && !confirmed && (
+        {uploadResult && !generating && (
           <div className="bg-surface gov-panel border border-border shadow-sm p-4 sm:p-6">
             <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
               <div className="min-w-0"><h2 className="text-base font-bold text-foreground flex gap-2 items-center"><FileText aria-hidden="true" className="h-4 w-4" /> Review extracted values</h2><p className="text-xs text-muted mt-1 break-all">{fileName}</p></div>
@@ -206,11 +236,11 @@ function UploadField() {
             <label className="flex gap-3 items-start min-h-11 mt-5 p-3 border border-border rounded-lg cursor-pointer"><input type="checkbox" checked={verified} disabled={confirming || saved} onChange={(event) => setVerified(event.target.checked)} className="mt-0.5 h-5 w-5 shrink-0 accent-primary" /><span className="text-sm"><span className="font-semibold">I have verified these values</span><span className="block text-xs text-muted mt-1">I checked every value, the kg/ha units, nutrient basis and sample/test date against my report.</span></span></label>
             {confirmError && <p role="alert" className="mt-4 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg p-3">{confirmError}</p>}
             <button type="button" onClick={() => void handleConfirm()} disabled={confirming || (!saved && (!verified || validationErrors.length > 0))} className="mt-5 w-full min-h-12 bg-primary hover:bg-primary-hover disabled:opacity-50 text-white text-sm font-semibold px-5 py-3 rounded-lg transition flex items-center justify-center gap-2">
-              {confirming && <LoaderCircle aria-hidden="true" className="w-4 h-4 animate-spin" />}{confirming ? saved ? "Refreshing field…" : "Saving verified values…" : saved ? "Retry field refresh" : "Confirm and update field"}
+              {confirming && <LoaderCircle aria-hidden="true" className="w-4 h-4 animate-spin" />}{confirming ? (saved ? "Refreshing field…" : "Saving verified values…") : saved ? "Retry field refresh" : "Confirm and update field"}
             </button>
+            <p className="text-xs text-muted mt-3 text-center">After confirming, Kisan Saathi will automatically generate your fertilizer plan and open your field report.</p>
           </div>
         )}
-        {confirmed && <div role="status" className="bg-surface gov-panel border border-green-200 shadow-sm p-8 text-center"><CheckCircle2 aria-hidden="true" className="h-10 w-10 mx-auto text-primary mb-3" /><h2 className="font-serif text-lg font-bold text-foreground mb-2">Verified soil data saved</h2><p className="text-sm text-muted mb-5">Field {fieldId}&apos;s soil record was saved and its digital twin refreshed. Review the dashboard for the recommendation status and any remaining evidence needed.</p><Link href={`/dashboard?field=${encodeURIComponent(fieldId)}`} className="inline-flex items-center gap-2 min-h-11 bg-primary hover:bg-primary-hover text-white text-sm font-semibold px-5 py-3 rounded-lg transition">View dashboard</Link></div>}
       </div>
     </div>
   );

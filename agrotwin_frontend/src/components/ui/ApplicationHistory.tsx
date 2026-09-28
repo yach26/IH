@@ -1,7 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
 import { getApplications, getFertilizerProducts, recordApplication, type FertilizerApplication } from "@/lib/api";
-import LocalizedText from "@/components/ui/LocalizedText";
 export default function ApplicationHistory({ fieldId, onRecorded }: { fieldId: string; onRecorded?: () => void }) {
   const [rows, setRows] = useState<FertilizerApplication[]>([]);
   const [products, setProducts] = useState<{product_code: string; product_name: string}[]>([]);
@@ -16,7 +15,7 @@ export default function ApplicationHistory({ fieldId, onRecorded }: { fieldId: s
     }).catch(err => { if (!cancelled) setError(String(err)); });
     return () => { cancelled = true; };
   }, [fieldId]);
-  return <LocalizedText><section className="rounded-xl border border-border bg-white p-5 space-y-3">
+  return <section className="rounded-xl border border-border bg-white p-5 space-y-3">
     <h2 className="text-lg font-bold">Previous fertilizer applications</h2>
     <p className="text-sm text-muted">Record what was actually applied. Recommendations are not proof of application. Missing history does not mean no fertilizer was used.</p>
     {!loaded && !error && <p>Loading application history?</p>}
@@ -38,5 +37,5 @@ export default function ApplicationHistory({ fieldId, onRecorded }: { fieldId: s
       <button disabled={busy || !loaded} className="bg-primary text-white rounded px-4 py-2 disabled:opacity-50">{busy ? "Saving?" : "Record application"}</button>
     </form>
     {error && <p role="alert">{error}</p>}{message && <p role="status">{message}</p>}
-  </section></LocalizedText>;
+  </section>;
 }

@@ -3,7 +3,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { Check, ChevronDown, Sprout, Wheat } from "lucide-react";
 import type { FieldSummary } from "@/lib/api";
-import LocalizedText from "@/components/ui/LocalizedText";
 
 function CropIcon({ crop }: { crop?: string | null }) {
   const Icon = crop && /rice|wheat|maize|paddy|jowar|bajra/i.test(crop) ? Wheat : Sprout;
@@ -51,7 +50,7 @@ export default function FieldSelector({
   }
 
   return (
-    <LocalizedText><div ref={container} className={`relative min-w-0 max-w-full ${className}`} onBlur={(event) => {
+    <div ref={container} className={`relative min-w-0 max-w-full ${className}`} onBlur={(event) => {
       if (!event.currentTarget.contains(event.relatedTarget as Node)) setOpen(false);
     }}
     >
@@ -84,6 +83,6 @@ export default function FieldSelector({
         </button>)}
         {!fields.length && <p className="p-3 text-sm text-muted">No fields available.</p>}
       </div>}
-    </div></LocalizedText>
+    </div>
   );
 }

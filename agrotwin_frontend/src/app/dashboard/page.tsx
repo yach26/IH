@@ -13,7 +13,6 @@ import FieldOnboarding from '@/components/ui/FieldOnboarding';
 import StageTimeline from '@/components/ui/StageTimeline';
 import ProofTrace from '@/components/ui/ProofTrace';
 import ApplicationHistory from '@/components/ui/ApplicationHistory';
-import LocalizedText from '@/components/ui/LocalizedText';
 import { Volume2, History, ShieldCheck } from 'lucide-react';
 import { useLanguage } from '@/contexts/LanguageContext';
 
@@ -195,7 +194,7 @@ function OfficialRecommendationPanel({
   generateError: string | null;
   onGenerate: () => void;
 }) {
-  const { t, translate, language } = useLanguage();
+  const { t, language } = useLanguage();
   const rec = field.recommendation;
   const proof = field.proof;
   const [proofSelection, setProofSelection] = React.useState<string | null>(null);
@@ -226,9 +225,9 @@ function OfficialRecommendationPanel({
     setVoiceUnavailable(language !== 'en' && !match);
     const utterance = new SpeechSynthesisUtterance([
       'Kisan Saathi. ' + field.id + '.',
-      isAbstain || isNoData ? translate(rec.reason || 'No recommendation is available yet.') : [rec.action, rec.quantity, rec.applicationWindow].map(translate).join('. '),
-      translate('Confidence') + ': ' + translate(rec.confidence) + '.',
-      ...nextActions.map(translate),
+      isAbstain || isNoData ? rec.reason || 'No recommendation is available yet.' : rec.action + '. ' + rec.quantity + '. ' + rec.applicationWindow + '.',
+      'Confidence: ' + rec.confidence + '.',
+      ...nextActions,
     ].join(' '));
     utterance.lang = targetLang;
     if (match) utterance.voice = match;
@@ -243,7 +242,7 @@ function OfficialRecommendationPanel({
   }
 
   return (
-    <LocalizedText><section id="official-recommendation" aria-label="Field fertilizer recommendation" className="mx-4 mt-4 rounded-xl border border-border bg-surface p-5 shadow-sm md:mx-6 md:p-7">
+    <section id="official-recommendation" aria-label="Field fertilizer recommendation" className="mx-4 mt-4 rounded-xl border border-border bg-surface p-5 shadow-sm md:mx-6 md:p-7">
       <div className="mb-5 flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-xs font-bold uppercase tracking-widest text-primary">Kisan Saathi · Evidence-based recommendation</p>
@@ -332,7 +331,7 @@ function OfficialRecommendationPanel({
         {voiceUnavailable && <p role="status" className="text-xs text-amber-800">The requested language voice may not be installed in this browser. The browser’s available voice will be used.</p>}
       </div>
       {proofSelection && <ProofTrace proof={proof} fieldId={field.id} selection={proofSelection} onClose={() => setProofSelection(null)} />}
-    </section></LocalizedText>
+    </section>
   );
 }
 
@@ -387,7 +386,7 @@ function OverrideForm({
   }
 
   return (
-    <LocalizedText><div className="mt-3 gov-panel border border-primary/30 bg-primary/5 p-4">
+    <div className="mt-3 gov-panel border border-primary/30 bg-primary/5 p-4">
       <p className="text-xs font-bold uppercase tracking-wide text-primary mb-3">Agronomist Override</p>
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-3">
         {Object.entries(values).map(([key, val]) => (
@@ -424,7 +423,7 @@ function OverrideForm({
           Cancel
         </button>
       </div>
-    </div></LocalizedText>
+    </div>
   );
 }
 
@@ -446,7 +445,7 @@ function HistoryOversightPanel({ fieldId, onOverridden }: { fieldId: string; onO
   const latest = history?.[0];
 
   return (
-    <LocalizedText><div className="lg:col-span-3 bg-surface gov-panel border border-border shadow-sm p-5">
+    <div className="lg:col-span-3 bg-surface gov-panel border border-border shadow-sm p-5">
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
           <History className="w-4 h-4 text-primary" />
@@ -502,7 +501,7 @@ function HistoryOversightPanel({ fieldId, onOverridden }: { fieldId: string; onO
           {expanded ? 'Show less' : `Show all ${history.length} entries`}
         </button>
       )}
-    </div></LocalizedText>
+    </div>
   );
 }
 
@@ -604,7 +603,7 @@ function DashboardField() {
   if (!field) return null;
 
   return (
-    <LocalizedText><div className="min-h-screen bg-background font-sans">
+    <div className="min-h-screen bg-background font-sans">
 
       {error && (
         <div className="bg-red-50 border-b border-red-200 text-red-700 text-xs px-4 py-2 text-center">
@@ -941,7 +940,7 @@ function DashboardField() {
 
       </div>
       </>)}
-    </div></LocalizedText>
+    </div>
   );
 }
 

@@ -195,19 +195,6 @@ export function translateText(text: string, language: Language): string {
   // Translate composed labels without changing numbers, record IDs or source documents.
   const soil = normalized.match(/^Soil (\d+)\/100$/);
   if (soil) return (language === 'hi' ? 'मृदा ' : 'माती ') + soil[1] + '/100';
-  const soilSummary = normalized.match(/^Based on real soil test \(N=(.+?) kg\/ha, P=(.+?) kg\/ha, K=(.+?) kg\/ha\) and (.+) at (.+) stage\. Nutrient gaps: N (.+?) kg\/ha, P₂O₅ (.+?) kg\/ha, K₂O (.+?) kg\/ha\.$/);
-  if (soilSummary) {
-    const [, nitrogen, phosphorus, potassium, crop, stage, nitrogenGap, phosphorusGap, potassiumGap] = soilSummary;
-    const localizedCrop = uiTranslations[normalize(crop)]?.[index] || crop;
-    const localizedStage = uiTranslations[normalize(stage)]?.[index] || stage;
-    return language === 'hi'
-      ? `वास्तविक मृदा परीक्षण के आधार पर (N=${nitrogen} kg/ha, P=${phosphorus} kg/ha, K=${potassium} kg/ha) और ${localizedCrop} की फसल ${localizedStage} अवस्था में है। पोषक कमियाँ: N ${nitrogenGap} kg/ha, P₂O₅ ${phosphorusGap} kg/ha, K₂O ${potassiumGap} kg/ha।`
-      : `प्रत्यक्ष माती चाचणीवर आधारित (N=${nitrogen} kg/ha, P=${phosphorus} kg/ha, K=${potassium} kg/ha); ${localizedCrop} पीक ${localizedStage} टप्प्यात आहे. पोषक कमतरता: N ${nitrogenGap} kg/ha, P₂O₅ ${phosphorusGap} kg/ha, K₂O ${potassiumGap} kg/ha.`;
-  }
-  const recordedFlags = normalized.match(/^(\d+) recorded flags\. Open the proof to inspect the data-quality checks\.$/);
-  if (recordedFlags) return language === 'hi'
-    ? `${recordedFlags[1]} संकेत दर्ज हैं। डेटा गुणवत्ता जाँचने के लिए प्रमाण खोलें।`
-    : `${recordedFlags[1]} संकेत नोंदवले आहेत. डेटा गुणवत्ता तपासण्यासाठी पुरावे उघडा.`;
   const cost = normalized.match(/^This mix costs (.+) (less|more) than the baseline\.$/);
   if (cost) return language === 'hi' ? 'इस मिश्रण की लागत आधार योजना से ' + cost[1] + (cost[2] === 'less' ? ' कम है।' : ' अधिक है।') : 'या मिश्रणाचा खर्च आधार योजनेपेक्षा ' + cost[1] + (cost[2] === 'less' ? ' कमी आहे.' : ' जास्त आहे.');
   const pieces = text.split(/( · | \+ |, )/);

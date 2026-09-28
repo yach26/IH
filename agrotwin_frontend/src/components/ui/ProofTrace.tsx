@@ -3,7 +3,6 @@
 import { useEffect, useRef } from "react";
 import { X, FileText, ShieldCheck } from "lucide-react";
 import type { RecommendationOut } from "@/lib/api";
-import LocalizedText from "@/components/ui/LocalizedText";
 
 const nutrientNames: Record<string, string> = { N: "N", P2O5: "P₂O₅", K2O: "K₂O" };
 const qualityNames: Record<string, string> = {
@@ -61,7 +60,7 @@ export default function ProofTrace({
   ].filter((value): value is string => Boolean(value))));
 
   return (
-    <LocalizedText><dialog
+    <dialog
       ref={dialogRef}
       aria-labelledby="proof-trace-title"
       aria-describedby="proof-trace-description"
@@ -163,6 +162,6 @@ export default function ProofTrace({
           </div>
         )}
       </div>
-    </dialog></LocalizedText>
+    </dialog>
   );
 }

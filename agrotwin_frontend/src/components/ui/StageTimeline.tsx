@@ -1,5 +1,4 @@
 "use client";
-import LocalizedText from "@/components/ui/LocalizedText";
 
 /**
  * Shared crop-stage timeline. Dashboard uses this read-only, driven by the
@@ -31,7 +30,7 @@ export default function StageTimeline({
   }));
 
   return (
-    <LocalizedText><div className="relative" aria-readonly={readOnly}>
+    <div className="relative" aria-readonly={readOnly}>
       <div className="absolute top-4 left-0 right-0 h-0.5 bg-gray-200" />
       {items.length > 1 && (
         <div
@@ -78,6 +77,6 @@ export default function StageTimeline({
           </div>
         ))}
       </div>
-    </div></LocalizedText>
+    </div>
   );
 }
