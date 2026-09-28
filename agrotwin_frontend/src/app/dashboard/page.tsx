@@ -40,12 +40,19 @@ function formatFertilizerName(key: string): string {
   return key.replace(/_kg_ha$/i, '').replace(/_/g, ' ');
 }
 
+function statusColor(label: string): string {
+  if (label === 'Good' || label === 'Low') return 'text-green-500';
+  if (label === 'Fair' || label === 'Elevated') return 'text-amber-500';
+  if (label === 'Needs Attention') return 'text-red-500';
+  return 'text-gray-400';
+}
+
 // FieldState stores these as fixed English codes (used in equality checks
 // throughout this file) — translation only happens at render time via this
 // lookup, so switching language never risks breaking the underlying logic.
 function tStatus(t: (key: string) => string, label: string): string {
   const map: Record<string, string> = {
-    'High': 'dash.high', 'Moderate': 'dash.moderate', 'Low': 'dash.low',
+    'High': 'dash.high', 'Moderate': 'dash.moderate', 'Low': 'dash.low', 'Elevated': 'dash.elevated',
     'Not available': 'dash.notAvailable', 'Good': 'dash.good',
     'Healthy': 'dash.healthy', 'Needs Attention': 'dash.needsAttention', 'Unknown': 'dash.unknown',
   };
@@ -89,8 +96,10 @@ type FieldState = {
     note: string;
   };
   fieldStatus: {
-    cropCondition: { label: string; color: string };
-    waterStress: { label: string; color: string };
+    cropCondition: { label: string; color: string; reason: string | null };
+    waterStress: { label: string; color: string; reason: string | null };
+    pestRisk: { label: string; color: string; reason: string | null };
+    diseaseRisk: { label: string; color: string; reason: string | null };
     overall: string;
   };
   recommendation: {
@@ -162,9 +171,27 @@ function mapTwinToFieldState(data: TwinResponse): FieldState {
       note: description,
     },
     fieldStatus: {
-      cropCondition: { label: 'Not available', color: 'text-gray-500' },
-      waterStress: { label: 'Not available', color: 'text-gray-500' },
-      overall: 'Unknown',
+      cropCondition: {
+        label: data.cropCondition?.label ?? 'Not available',
+        color: statusColor(data.cropCondition?.label ?? 'Not available'),
+        reason: data.cropCondition?.reason ?? null,
+      },
+      waterStress: {
+        label: data.waterStress?.label ?? 'Not available',
+        color: statusColor(data.waterStress?.label ?? 'Not available'),
+        reason: data.waterStress?.reason ?? null,
+      },
+      pestRisk: {
+        label: data.pestDiseaseRisk?.label ?? 'Not available',
+        color: statusColor(data.pestDiseaseRisk?.label ?? 'Not available'),
+        reason: data.pestDiseaseRisk?.reason ?? null,
+      },
+      diseaseRisk: {
+        label: data.pestDiseaseRisk?.label ?? 'Not available',
+        color: statusColor(data.pestDiseaseRisk?.label ?? 'Not available'),
+        reason: data.pestDiseaseRisk?.reason ?? null,
+      },
+      overall: data.overallStatus ?? 'Unknown',
     },
     recommendation: {
       action: plan.nextAction || 'Awaiting plan',
@@ -814,25 +841,17 @@ function DashboardField() {
 
           <div className="space-y-3">
             {[
-              { name: t('dash.cropCondition'), value: tStatus(t, field.fieldStatus.cropCondition.label), color: field.fieldStatus.cropCondition.color },
-              { name: t('dash.waterStress'), value: tStatus(t, field.fieldStatus.waterStress.label), color: field.fieldStatus.waterStress.color },
+              { name: t('dash.cropCondition'), value: tStatus(t, field.fieldStatus.cropCondition.label), color: field.fieldStatus.cropCondition.color, reason: field.fieldStatus.cropCondition.reason },
+              { name: t('dash.waterStress'), value: tStatus(t, field.fieldStatus.waterStress.label), color: field.fieldStatus.waterStress.color, reason: field.fieldStatus.waterStress.reason },
+              { name: t('dash.pestRisk'), value: tStatus(t, field.fieldStatus.pestRisk.label), color: field.fieldStatus.pestRisk.color, reason: field.fieldStatus.pestRisk.reason },
+              { name: t('dash.diseaseRisk'), value: tStatus(t, field.fieldStatus.diseaseRisk.label), color: field.fieldStatus.diseaseRisk.color, reason: field.fieldStatus.diseaseRisk.reason },
             ].map((item) => (
-              <div key={item.name} className="flex items-center justify-between py-1.5 border-b border-gray-50 last:border-0">
+              <div key={item.name} className="flex items-center justify-between py-1.5 border-b border-gray-50 last:border-0" title={item.reason || undefined}>
                 <span className="text-xs text-gray-500">{item.name}</span>
                 <div className="flex items-center gap-1.5">
                   <StatusDot color={item.color} />
                   <span className={`text-xs font-semibold ${item.color}`}>{item.value}</span>
                 </div>
-              </div>
-            ))}
-            {/* No pest/disease detection agent exists — never fabricate a risk level. */}
-            {[
-              { name: t('dash.pestRisk') },
-              { name: t('dash.diseaseRisk') },
-            ].map((item) => (
-              <div key={item.name} className="flex items-center justify-between py-1.5 border-b border-gray-50 last:border-0">
-                <span className="text-xs text-gray-500">{item.name}</span>
-                <span className="text-xs font-semibold text-gray-400">{t('dash.notAssessed')}</span>
               </div>
             ))}
           </div>

@@ -6,12 +6,30 @@ export interface CropModelProps {
   cropType: 'Banana' | 'Cotton' | 'Sugarcane' | 'Rice' | string;
   growthStage: string;
   vigor: 'thriving' | 'healthy' | 'below-average' | 'stressed';
-  nutrientSufficiency: 'optimal' | 'suboptimal' | 'deficient';
-  waterStress: 'none' | 'moderate' | 'high';
+  nutrientSufficiency: 'optimal' | 'suboptimal' | 'deficient' | 'unknown';
+  waterStress: 'none' | 'moderate' | 'high' | 'unknown';
   confidence: 'HIGH' | 'MEDIUM' | 'LOW' | 'ABSTAIN';
+  label?: string;
 }
 
-export function CropModel({ cropType, vigor, confidence }: CropModelProps) {
+const SKETCHFAB_IDS: Record<string, { id: string; title: string }> = {
+  Banana: { id: '5cb46e64d7fc40978c3d6798017eced1', title: 'Banana Tree' },
+  Rice: { id: 'be6aa4ac9adc4f558cc789a0baed8ae3', title: 'Rice Plant' },
+  Cotton: { id: '6c6c90de4626417a92f846ad06e551fa', title: 'Cotton Branch' },
+  Sugarcane: { id: '9506c8f11aa6465d92f868086b367be4', title: 'Sugarcane' },
+};
+
+// A static Sketchfab scene can't be re-lit or deformed without the paid API,
+// so vigor is shown as a CSS filter over the embed plus a text badge —
+// deterministic from real scenario data, never a separate animation state.
+const VIGOR_STYLE: Record<CropModelProps['vigor'], { filter: string; ring: string; badge: string; label: string }> = {
+  thriving: { filter: 'saturate(1.15) brightness(1.05)', ring: 'ring-green-400', badge: 'bg-green-100 text-green-800', label: 'Thriving' },
+  healthy: { filter: 'none', ring: 'ring-transparent', badge: 'bg-green-50 text-green-700', label: 'Healthy' },
+  'below-average': { filter: 'saturate(0.7) brightness(0.95) sepia(0.08)', ring: 'ring-amber-400', badge: 'bg-amber-100 text-amber-800', label: 'Below Average' },
+  stressed: { filter: 'saturate(0.4) brightness(0.85) sepia(0.15)', ring: 'ring-red-400', badge: 'bg-red-100 text-red-800', label: 'Stressed' },
+};
+
+export function CropModel({ cropType, growthStage, vigor, nutrientSufficiency, waterStress, confidence, label }: CropModelProps) {
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   // If model confidence is low, we degrade gracefully rather than showing a hallucinated plant
@@ -35,26 +53,16 @@ export function CropModel({ cropType, vigor, confidence }: CropModelProps) {
   };
 
   const style = styles[vigor] || styles.healthy;
+  const vigorStyle = VIGOR_STYLE[vigor] || VIGOR_STYLE.healthy;
+  const model = SKETCHFAB_IDS[cropType];
+  const is3DModel = Boolean(model);
 
   let embedContent = null;
-  const is3DModel = ['Banana', 'Rice', 'Cotton'].includes(cropType);
-  
-  if (cropType === 'Banana') {
+
+  if (model) {
     embedContent = (
-      <div className="sketchfab-embed-wrapper w-full h-full relative z-0">
-        <iframe title="Banana Tree" className="w-full h-full" frameBorder="0" allowFullScreen allow="autoplay; fullscreen; xr-spatial-tracking" xr-spatial-tracking="true" execution-while-out-of-viewport="true" execution-while-not-rendered="true" web-share="true" src="https://sketchfab.com/models/5cb46e64d7fc40978c3d6798017eced1/embed"> </iframe>
-      </div>
-    );
-  } else if (cropType === 'Rice') {
-    embedContent = (
-      <div className="sketchfab-embed-wrapper w-full h-full relative z-0">
-        <iframe title="Rice Plant" className="w-full h-full" frameBorder="0" allowFullScreen allow="autoplay; fullscreen; xr-spatial-tracking" xr-spatial-tracking="true" execution-while-out-of-viewport="true" execution-while-not-rendered="true" web-share="true" src="https://sketchfab.com/models/be6aa4ac9adc4f558cc789a0baed8ae3/embed"> </iframe>
-      </div>
-    );
-  } else if (cropType === 'Cotton') {
-    embedContent = (
-      <div className="sketchfab-embed-wrapper w-full h-full relative z-0">
-        <iframe title="Cotton branch" className="w-full h-full" frameBorder="0" allowFullScreen allow="autoplay; fullscreen; xr-spatial-tracking" xr-spatial-tracking="true" execution-while-out-of-viewport="true" execution-while-not-rendered="true" web-share="true" src="https://sketchfab.com/models/6c6c90de4626417a92f846ad06e551fa/embed"> </iframe>
+      <div className="sketchfab-embed-wrapper w-full h-full relative z-0 transition-[filter] duration-700" style={{ filter: vigorStyle.filter }}>
+        <iframe title={model.title} className="w-full h-full" frameBorder="0" allowFullScreen allow="autoplay; fullscreen; xr-spatial-tracking" xr-spatial-tracking="true" execution-while-out-of-viewport="true" execution-while-not-rendered="true" web-share="true" src={`https://sketchfab.com/models/${model.id}/embed`}> </iframe>
       </div>
     );
   } else {
@@ -86,13 +94,16 @@ export function CropModel({ cropType, vigor, confidence }: CropModelProps) {
 
   return (
     <>
-      <div className="w-full h-64 bg-blue-50/30 rounded-lg flex flex-col items-center justify-end overflow-hidden border border-border relative group">
+      <div className={`w-full h-64 bg-blue-50/30 rounded-lg flex flex-col items-center justify-end overflow-hidden border border-border relative group ring-2 ${vigorStyle.ring} transition-colors duration-700`}>
         <div className="absolute top-2 left-2 px-2 py-1 bg-white/80 rounded text-xs font-semibold text-muted backdrop-blur-sm shadow-sm z-10 pointer-events-none">
-          {cropType} Projection
+          {label || cropType}{growthStage ? ` · ${growthStage}` : ''}
         </div>
-        
+        <div className={`absolute top-2 right-2 z-10 px-2 py-1 rounded text-[10px] font-bold backdrop-blur-sm shadow-sm pointer-events-none ${vigorStyle.badge} ${is3DModel ? 'mr-9' : ''}`}>
+          {vigorStyle.label}
+        </div>
+
         {is3DModel && (
-          <button 
+          <button
             onClick={() => setIsFullscreen(true)}
             className="absolute top-2 right-2 z-20 p-2 bg-white/90 rounded-full shadow-sm text-primary hover:bg-primary hover:text-white transition-all opacity-0 group-hover:opacity-100 scale-95 group-hover:scale-100"
             title="View Fullscreen"
@@ -102,9 +113,19 @@ export function CropModel({ cropType, vigor, confidence }: CropModelProps) {
             </svg>
           </button>
         )}
-        
+
         {embedContent}
       </div>
+      {(nutrientSufficiency !== 'unknown' || waterStress !== 'unknown') && (
+        <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
+          {nutrientSufficiency !== 'unknown' && (
+            <span className="rounded-full border border-border bg-surface px-2 py-0.5 text-muted">Nutrients: <span className="font-semibold text-foreground">{nutrientSufficiency}</span></span>
+          )}
+          {waterStress !== 'unknown' && (
+            <span className="rounded-full border border-border bg-surface px-2 py-0.5 text-muted">Water stress: <span className="font-semibold text-foreground">{waterStress}</span></span>
+          )}
+        </div>
+      )}
 
       {isFullscreen && is3DModel && (
         <div className="fixed inset-0 z-[100] bg-black/95 backdrop-blur-sm flex items-center justify-center p-4 md:p-12 animate-in fade-in duration-300">

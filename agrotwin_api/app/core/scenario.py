@@ -131,7 +131,7 @@ def _side(
 
 def run_scenario(
     conn: Any, field_row: Any, *, fertilizer_delta_pct: float | None = None,
-    rainfall_mm: float | None = None,
+    rainfall_mm: float | None = None, product_deltas_pct: dict[str, float] | None = None,
 ) -> dict:
     """Return a truthful comparison, or an explicit state without numeric output."""
     field = dict(field_row)
@@ -140,6 +140,10 @@ def run_scenario(
         raise ValueError("fertilizer_delta_pct must be finite and between -100 and 500")
     if rainfall_mm is not None and (not isfinite(float(rainfall_mm)) or rainfall_mm < 0):
         raise ValueError("rainfall_mm must be finite and nonnegative")
+    product_deltas_pct = product_deltas_pct or {}
+    for code, pct in product_deltas_pct.items():
+        if not isfinite(pct) or not -100 <= pct <= 500:
+            raise ValueError(f"product_deltas_pct[{code}] must be finite and between -100 and 500")
     response = {
         "fieldId": field["field_code"],
         "crop": field.get("crop_name") or field.get("crop_code"),
@@ -220,7 +224,10 @@ def run_scenario(
             f"The scenario uses the configured {threshold:g} mm heavy-rain precaution; "
             "no rainfall probability or observed weather is invented."
         )
-    scenario_quantities = {key: round(value * (1 + delta / 100), 2) for key, value in quantities.items()}
+    scenario_quantities = {
+        key: round(value * (1 + product_deltas_pct.get(key.removesuffix("_kg_ha"), delta) / 100), 2)
+        for key, value in quantities.items()
+    }
     simulated = _side(scenario_quantities, proof, current_ledger, products, simulated_weather, region_id, hypothetical=True)
     response.update(
         status="SIMULATION", original=original, simulated=simulated,

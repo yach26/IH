@@ -49,6 +49,10 @@ class SoilReportConfirmRequest(BaseModel):
 class WhatIfRequest(BaseModel):
     fertilizer_delta_pct: float | None = Field(default=None, ge=-100, le=500, allow_inf_nan=False)
     rainfall_mm: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    # Per-product override, e.g. {"DAP": -20, "UREA": 50} — product code (no
+    # _kg_ha suffix) -> percent change. A product missing from this dict
+    # falls back to fertilizer_delta_pct (default 0).
+    product_deltas_pct: dict[str, float] | None = None
 
 
 class OverrideRequest(BaseModel):

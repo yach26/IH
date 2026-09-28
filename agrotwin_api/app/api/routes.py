@@ -98,6 +98,58 @@ def _get_rdf_targets(conn: sqlite3.Connection, crop_code: str, rec_type: str):
     )
 
 
+def _water_stress(irrigation_type: str | None, weather_available: bool, rainfall_mm_next_7d: float | None) -> dict:
+    """Coarse dryness signal — see rules.water_stress in region_config.py for
+    the threshold and its (lack of a real) evidence base. Never a substitute
+    for a soil-moisture/water-balance model this system doesn't have."""
+    from ..core.region_config import load_region_config
+
+    irrigation = (irrigation_type or "").strip().lower()
+    if irrigation == "irrigated":
+        return {"label": "Low", "reason": "Field is irrigated — rainfall shortfall is supplemented."}
+    if irrigation != "rainfed":
+        return {"label": "Not available", "reason": "Irrigation type not recorded for this field."}
+    if not weather_available or rainfall_mm_next_7d is None:
+        return {"label": "Not available", "reason": "No current rainfall forecast to assess a rainfed field against."}
+    threshold = load_region_config()["rules"]["water_stress"]["dry_threshold_mm"]
+    if rainfall_mm_next_7d < threshold:
+        return {"label": "Elevated", "reason": f"Rainfed field; forecast rainfall ({rainfall_mm_next_7d} mm/7d) is below the {threshold} mm dryness threshold."}
+    return {"label": "Low", "reason": f"Rainfed field; forecast rainfall ({rainfall_mm_next_7d} mm/7d) meets the {threshold} mm dryness threshold."}
+
+
+def _crop_condition(soil_health_score: float | None, ph: float | None) -> dict:
+    """Proxy from real, already-measured soil signals — see rules.crop_condition
+    in region_config.py. Never a substitute for a vision/scouting assessment."""
+    from ..core.region_config import load_region_config
+
+    if soil_health_score is None:
+        return {"label": "Not available", "reason": "No confirmed soil test to derive a nutrient-sufficiency proxy from."}
+    cfg = load_region_config()["rules"]
+    good_min = cfg["crop_condition"]["good_score_min"]
+    poor_max = cfg["crop_condition"]["poor_score_max"]
+    ph_min, ph_max = cfg["soil_limits"]["ph_min"], cfg["soil_limits"]["ph_max"]
+    ph_ok = ph is None or (ph_min <= ph <= ph_max)
+    if soil_health_score < poor_max or not ph_ok:
+        reason = f"Soil health score ({soil_health_score}/100) is below {poor_max}" if soil_health_score < poor_max else f"pH ({ph}) is outside the {ph_min}–{ph_max} sufficiency window"
+        return {"label": "Needs Attention", "reason": reason + "."}
+    if soil_health_score >= good_min and ph_ok:
+        return {"label": "Good", "reason": f"Soil health score ({soil_health_score}/100) meets the {good_min} threshold and pH is in range."}
+    return {"label": "Fair", "reason": f"Soil health score ({soil_health_score}/100) is between {poor_max} and {good_min}."}
+
+
+def _pest_disease_risk(weather_available: bool, rainfall_mm_next_7d: float | None) -> dict:
+    """Moisture-driven proxy — see rules.pest_disease_risk in region_config.py.
+    Never a substitute for a pest-scouting or disease-detection model."""
+    from ..core.region_config import load_region_config
+
+    if not weather_available or rainfall_mm_next_7d is None:
+        return {"label": "Not available", "reason": "No current rainfall forecast to assess moisture-driven pest/disease pressure."}
+    threshold = load_region_config()["rules"]["pest_disease_risk"]["wet_threshold_mm"]
+    if rainfall_mm_next_7d >= threshold:
+        return {"label": "Elevated", "reason": f"Forecast rainfall ({rainfall_mm_next_7d} mm/7d) is at or above the {threshold} mm wet-conditions threshold."}
+    return {"label": "Low", "reason": f"Forecast rainfall ({rainfall_mm_next_7d} mm/7d) is below the {threshold} mm wet-conditions threshold."}
+
+
 def _field_row(conn: sqlite3.Connection, field_ref: str) -> sqlite3.Row:
     base_query = """
         SELECT fac.*, c.crop_name, c.crop_code as crop_code_str
@@ -328,9 +380,31 @@ def get_twin(field_id: str, conn: sqlite3.Connection = Depends(get_conn)):
                 else None
             ),
         },
+        "waterStress": _water_stress(
+            dict(row).get("irrigation_type"),
+            weather_payload is not None,
+            weather_payload.get("rainfall_mm_next_7d") if weather_payload else None,
+        ),
+        "cropCondition": _crop_condition(soil_health_score, ph_val),
+        "pestDiseaseRisk": _pest_disease_risk(
+            weather_payload is not None,
+            weather_payload.get("rainfall_mm_next_7d") if weather_payload else None,
+        ),
         "activeAlert": active_alert
     }
-    
+    concerning = {"Elevated", "Needs Attention"}
+    signals = [
+        formatted_response["waterStress"]["label"],
+        formatted_response["cropCondition"]["label"],
+        formatted_response["pestDiseaseRisk"]["label"],
+    ]
+    if all(label == "Not available" for label in signals):
+        formatted_response["overallStatus"] = "Unknown"
+    elif any(label in concerning for label in signals):
+        formatted_response["overallStatus"] = "Needs Attention"
+    else:
+        formatted_response["overallStatus"] = "Healthy"
+
     return formatted_response
 
 
@@ -686,7 +760,8 @@ def what_if_simulator(
     from ..core.scenario import run_scenario
     return run_scenario(conn, _field_row(conn, field_id),
                         fertilizer_delta_pct=body.fertilizer_delta_pct,
-                        rainfall_mm=body.rainfall_mm)
+                        rainfall_mm=body.rainfall_mm,
+                        product_deltas_pct=body.product_deltas_pct)
 
 
 @router.post("/fields/{field_id}/override")

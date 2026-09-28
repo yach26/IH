@@ -126,6 +126,10 @@ export interface TwinResponse {
     heavy_rain_alert: boolean;
     condition: string | null;
   };
+  waterStress: { label: string; reason: string };
+  cropCondition: { label: string; reason: string };
+  pestDiseaseRisk: { label: string; reason: string };
+  overallStatus: string;
   activeAlert: { title: string; description: string } | null;
 }
 
@@ -319,7 +323,7 @@ export function getAllAlerts(limit = 50): Promise<Alert[]> {
 
 export function whatIf(
   fieldId: string,
-  body: { fertilizer_delta_pct?: number; rainfall_mm?: number }
+  body: { fertilizer_delta_pct?: number; rainfall_mm?: number; product_deltas_pct?: Record<string, number> }
 ): Promise<WhatIfResponse> {
   return request<WhatIfResponse>(`/fields/${encodeURIComponent(fieldId)}/what-if`, {
     method: "POST",
