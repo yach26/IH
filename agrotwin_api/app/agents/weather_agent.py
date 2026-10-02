@@ -24,7 +24,7 @@ from ..core.region_config import load_region_config
 # Open-Meteo API URL for daily precipitation forecast
 API_URL = "https://api.open-meteo.com/v1/forecast"
 CACHE_TTL_SECONDS = 900  # 15-minute in-memory cache (doc 12)
-_CACHE: dict[tuple[float, float], tuple[float, dict]] = {}
+_CACHE: dict[tuple[int, float, float], tuple[float, dict]] = {}
 
 
 def weather_thresholds() -> tuple[float, float]:
@@ -49,6 +49,7 @@ def get_weather_context(
     if lat is None or lon is None:
         flags.append("NO_COORDINATES (Cannot fetch weather without field lat/lon)")
         return {
+            "status": "COORDINATES_MISSING",
             "heavy_rain_alert": False,
             "flags": flags,
             "snapshot": None,
@@ -57,7 +58,7 @@ def get_weather_context(
 
     # Fetch fresh snapshot (in-memory cache for live API calls)
     snapshot = None
-    cache_key = (round(float(lat), 4), round(float(lon), 4))
+    cache_key = (field_id, float(lat), float(lon))
     if mock_snapshot:
         snapshot = _insert_snapshot_from_mock(conn, field_id, mock_snapshot)
     elif not force_refresh and cache_key in _CACHE:
@@ -75,10 +76,12 @@ def get_weather_context(
         except Exception as e:
             flags.append(f"WEATHER_FETCH_ERROR ({e})")
             # Fall back to latest stored snapshot if available
-            snapshot = _get_latest_snapshot(conn, field_id)
+            # Retain an old snapshot for audit only, never for current timing.
+            snapshot = None
 
     if snapshot is None:
         return {
+            "status": "PROVIDER_ERROR" if flags else "WEATHER_UNAVAILABLE",
             "heavy_rain_alert": False,
             "flags": flags,
             "snapshot": None,
@@ -96,6 +99,8 @@ def get_weather_context(
         )
 
     return {
+        "status": "SIMULATED_WEATHER" if mock_snapshot is not None else "WEATHER_AVAILABLE",
+        "source": snapshot.get("source"),
         "heavy_rain_alert": alert_active,
         "alert_details": alert_details,
         "flags": flags,
@@ -121,6 +126,9 @@ def _fetch_and_store_snapshot(
     p_sum = daily.get("precipitation_sum", [])
     p_prob = daily.get("precipitation_probability_max", [])
 
+    if len(p_sum) < 7 or len(p_prob) < 7 or any(v is None for v in p_sum + p_prob):
+        raise ValueError("Weather provider returned an incomplete seven-day forecast")
+
     mm_7d = round(sum(val for val in p_sum if val is not None), 1)
     max_prob = max((val for val in p_prob if val is not None), default=0)
 
@@ -139,7 +147,7 @@ def _fetch_and_store_snapshot(
     conn.commit()
     new_id = cur.lastrowid
     snap = _get_snapshot_by_id(conn, new_id)
-    _CACHE[(round(float(lat), 4), round(float(lon), 4))] = (time.time(), snap)
+    _CACHE[(field_id, float(lat), float(lon))] = (time.time(), snap)
     return snap
 
 

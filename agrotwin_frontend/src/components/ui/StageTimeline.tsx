@@ -10,11 +10,13 @@ export default function StageTimeline({
   stages,
   currentStage,
   readOnly = true,
+  currentLabel = "Current",
 }: {
   stages: string[];
   currentStage: string;
   stageProgress?: number;
   readOnly?: boolean;
+  currentLabel?: string;
 }) {
   const currentIdx = stages.findIndex(
     (s) => s.toLowerCase() === currentStage.toLowerCase()
@@ -46,7 +48,7 @@ export default function StageTimeline({
             <div
               className={`w-8 h-8 rounded-full flex items-center justify-center z-10 text-sm mb-2
                 ${stage.current
-                  ? "bg-green-600 border-2 border-green-600 text-white shadow-lg shadow-green-200"
+                  ? "bg-green-600 border-2 border-green-600 text-white shadow-lg shadow-green-200 ring-4 ring-green-200 animate-pulse"
                   : stage.done
                   ? "bg-white border-2 border-green-500"
                   : "bg-white border-2 border-gray-200"
@@ -69,7 +71,7 @@ export default function StageTimeline({
             </div>
             {stage.current && (
               <span className="mt-1 bg-green-600 text-white text-[9px] font-bold px-1.5 py-0.5 rounded-full whitespace-nowrap">
-                Current
+                {currentLabel}
               </span>
             )}
           </div>

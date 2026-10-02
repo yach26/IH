@@ -4,20 +4,32 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+from datetime import date
 
 
 class SoilTestIn(BaseModel):
-    n_kg_ha: float | None = None
-    p_kg_ha: float | None = None
-    k_kg_ha: float | None = None
-    ph: float | None = None
-    oc_percent: float | None = None
-    ec_ds_m: float | None = None
+    p_basis: Literal["P", "P2O5"] = "P"
+    k_basis: Literal["K", "K2O"] = "K"
+    n_kg_ha: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    p_kg_ha: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    k_kg_ha: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    ph: float | None = Field(default=None, ge=0, le=14, allow_inf_nan=False)
+    oc_percent: float | None = Field(default=None, ge=0, le=100, allow_inf_nan=False)
+    ec_ds_m: float | None = Field(default=None, ge=0, allow_inf_nan=False)
     test_date: str | None = None
     source: Literal["lab", "ocr", "manual"] = "manual"
     ocr_confidence: float | None = None
     original_file_path: str | None = None
+
+    @field_validator("test_date")
+    @classmethod
+    def validate_sample_date(cls, value):
+        if value is not None:
+            parsed = date.fromisoformat(value)
+            if parsed > date.today():
+                raise ValueError("Soil sample date cannot be in the future")
+        return value
 
 
 class CropAssignRequest(BaseModel):
@@ -35,8 +47,12 @@ class SoilReportConfirmRequest(BaseModel):
 
 
 class WhatIfRequest(BaseModel):
-    fertilizer_delta_pct: float | None = None
-    rainfall_mm: float | None = None
+    fertilizer_delta_pct: float | None = Field(default=None, ge=-100, le=500, allow_inf_nan=False)
+    rainfall_mm: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    # Per-product override, e.g. {"DAP": -20, "UREA": 50} — product code (no
+    # _kg_ha suffix) -> percent change. A product missing from this dict
+    # falls back to fertilizer_delta_pct (default 0).
+    product_deltas_pct: dict[str, float] | None = None
 
 
 class OverrideRequest(BaseModel):
@@ -115,3 +131,17 @@ class FieldCreateRequest(BaseModel):
     irrigation_type: str | None = None
     lat: float | None = None
     lon: float | None = None
+
+
+class ApplicationIn(BaseModel):
+    product_code: str
+    quantity_kg_ha: float = Field(gt=0, allow_inf_nan=False)
+    application_date: str
+    notes: str | None = None
+
+    @field_validator("application_date")
+    @classmethod
+    def valid_date(cls, value):
+        if date.fromisoformat(value) > date.today():
+            raise ValueError("Record actual applications, not future plans")
+        return value

@@ -19,14 +19,6 @@ import sys
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-# Try local rag package first, then backend.rag
-try:
-    from ...rag.ingestion import ingest_documents, HybridIndex, DOCS_DIR
-except (ImportError, ValueError):
-    try:
-        from rag.ingestion import ingest_documents, HybridIndex, DOCS_DIR
-    except (ImportError, ValueError):
-        from ...rag.ingestion import ingest_documents, HybridIndex, DOCS_DIR
 
 
 @dataclass
@@ -68,10 +60,11 @@ class EvidencePack:
         return len(self.chunks) == 0
 
 
-_index: Optional[HybridIndex] = None
+_index = None
 
 
-def _get_index() -> HybridIndex:
+def _get_index():
+    from rag.ingestion import ingest_documents, HybridIndex, DOCS_DIR
     global _index
     if _index is None:
         store = ingest_documents(DOCS_DIR)
@@ -134,9 +127,7 @@ def retrieve_evidence(
     try:
         idx = _get_index()
         raw_chunks = idx.query(query_str, top_k=top_k, filters=filters)
-        # If strict filter returned nothing, retry without strict filters
-        if not raw_chunks and filters:
-            raw_chunks = idx.query(query_str, top_k=top_k, filters={})
+        # No cross-crop/region evidence fallback: an empty result stays unavailable.
     except Exception as exc:
         return [{"source_file": "RAG_ERROR", "excerpt": f"Retrieval error: {exc}", "score": 0.0}]
 

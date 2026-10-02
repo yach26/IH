@@ -27,7 +27,7 @@ from .agents import crop_agent, knowledge_agent, soil_agent, weather_agent
 from .agents.twin_state import compute_confidence, make_empty_twin_state
 from .core.event_bus import get_bus
 from .core.events import Event, EventType
-from .core.optimizer import HeuristicOptimizer, Optimizer, OptimizerPlan, get_optimizer
+from .core.optimizer import HeuristicOptimizer, Optimizer, OptimizerPlan, get_optimizer, prices_for_plan
 from .core.proof import assemble_proof
 from .core.rules import RuleEngine
 from .db import _json_load
@@ -209,7 +209,7 @@ class RecommendationPipeline:
             )
         elif previous_plan:
             twin["weather"] = previous_plan.get("weather_context") or {}
-            twin["data_quality"]["has_weather"] = True
+            twin["data_quality"]["has_weather"] = bool(twin["weather"].get("snapshot"))
 
         # ── 6. Ledger (the only place nutrient gaps are born) ───────────
         if "ledger" in requested:
@@ -273,6 +273,7 @@ class RecommendationPipeline:
                 "cost_estimate": optimizer_plan.cost_estimate,
                 "cost_currency": optimizer_plan.cost_currency,
                 "cost_citation": optimizer_plan.cost_citation,
+                "prices_inr_per_kg": prices_for_plan(optimizer_plan.plan_kg_ha, twin.get("region_id")),
                 "optimizer_id": optimizer_plan.optimizer_id,
                 "message": optimizer_plan.message,
             }
@@ -321,6 +322,17 @@ class RecommendationPipeline:
             }
         )
 
+        hard_failures = [v for v in violations if v.severity == "HARD" and not v.passed
+                         and "WEATHER" not in v.rule_id]
+        if hard_failures:
+            return self._abstain(
+                conn, twin, ledger=ledger_result,
+                reason="Agronomic constraints failed: " + "; ".join(v.message for v in hard_failures),
+                required_actions=["Review the nutrient inputs and product constraints with an agronomist."],
+                mode=mode, agents_run=agents_run, audit=audit,
+                emit_events=emit_events, persist=persist,
+            )
+
         # Weather conflict → safer plan (defer window), not silent ABSTAIN
         status = ledger_result.get("status") or "PLAN_GENERATED"
         if mode == "partial_replan":
@@ -355,10 +367,28 @@ class RecommendationPipeline:
                 extra_query=extra,
                 top_k=4,
             )
+            evidence = [item for item in evidence if item.get("source_file") not in ("NONE", "RAG_ERROR")]
+            if not evidence:
+                twin["flags"].append("EVIDENCE_UNAVAILABLE: no applicable retrieved document; agronomic review required")
             twin["evidence"] = evidence
             audit.append({"step": "knowledge", "n_chunks": len(evidence)})
 
         # ── 10. Confidence ──────────────────────────────────────────────
+        # Soil/validation/rules agents each flag issues independently (e.g.
+        # STALE_SOIL_DATA can be raised by soil_agent, validation_agent and
+        # rules.py for the same underlying soil test) — dedupe by the leading
+        # code before scoring so one real issue isn't double-counted or
+        # double-displayed.
+        seen_codes = set()
+        deduped_flags = []
+        for flag in twin["flags"]:
+            code = flag.split(" (", 1)[0].split(":", 1)[0]
+            if code in seen_codes:
+                continue
+            seen_codes.add(code)
+            deduped_flags.append(flag)
+        twin["flags"] = deduped_flags
+
         agents_run.append("confidence")
         twin["confidence"] = compute_confidence(twin["flags"])
         if twin["confidence"] == "ABSTAIN":
@@ -492,7 +522,7 @@ class RecommendationPipeline:
         rows = conn.execute(
             """SELECT recommendation_id, plan_json, status, generated_at, invalidated_at
                FROM recommendations WHERE field_id = ?
-               ORDER BY generated_at DESC LIMIT 10""",
+               ORDER BY generated_at DESC, recommendation_id DESC LIMIT 10""",
             (field_id,),
         ).fetchall()
         out = []

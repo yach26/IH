@@ -16,15 +16,16 @@ DEFAULT_REGION_CONFIG: dict = {
         "unit": "per_kg",
         # Gap #8: no sourced fertilizer price table exists in the data pack.
         "citation": (
-            "ENGINEERING_DEFAULT market prices pending Gap #8 "
-            "(04_remaining_gaps.md — no fertilizer price table sourced). "
-            "Used only for a cost *estimate* on the proof object; never as "
-            "the source of kg/ha quantities."
+            "Static reference prices, not a current Kolhapur dealer quotation: "
+            "UREA INR 266.50/45 kg; DAP INR 1350/50 kg (IFFCO price list effective 2025-01-01, "
+            "https://iffco-public-assets.s3.ap-south-1.amazonaws.com/s3fs-public/2025-02/Issue-price-and-MRP-of-IFFCO-fertiliser.pdf). "
+            "MOP INR 36/kg is an ENGINEERING_DEFAULT planning assumption, not a verified market quote. "
+            "Product cost only; transport, labour and application costs excluded."
         ),
         "prices_inr_per_kg": {
-            "UREA": 6.0,
+            "UREA": 266.50 / 45,
             "DAP": 27.0,
-            "MOP": 20.0,
+            "MOP": 36.0,
             "SSP": 8.0,
             "SOP": 45.0,
             "AMMONIUM_SULPHATE": 12.0,
@@ -92,6 +93,41 @@ DEFAULT_REGION_CONFIG: dict = {
                 "used here as a warning only)."
             ),
             "ec_ds_m_max": 4.0,
+        },
+        "water_stress": {
+            "rule_id": "WATER_STRESS_RAINFED_DRYNESS",
+            "citation": (
+                "ENGINEERING_DEFAULT — not a crop water-balance model (no soil "
+                "moisture sensor or irrigation log exists in this system). "
+                "A rainfed field with less than dry_threshold_mm forecast over "
+                "the next 7 days is flagged Elevated as a coarse dryness signal; "
+                "an irrigated field is always Low regardless of rainfall."
+            ),
+            "dry_threshold_mm": 15.0,
+        },
+        "crop_condition": {
+            "rule_id": "CROP_CONDITION_NUTRIENT_PH_PROXY",
+            "citation": (
+                "ENGINEERING_DEFAULT — not a vision/scouting assessment (no field-photo "
+                "or satellite model exists in this system). Proxies crop condition from "
+                "two real, already-measured signals: the soil health score (N/P/K vs "
+                "RDF sufficiency) and whether pH sits in the SOIL_PH_WINDOW rule's range. "
+                "good_score_min: healthy proxy. poor_score_max: needs-attention proxy."
+            ),
+            "good_score_min": 70.0,
+            "poor_score_max": 40.0,
+        },
+        "pest_disease_risk": {
+            "rule_id": "PEST_DISEASE_MOISTURE_PROXY",
+            "citation": (
+                "ENGINEERING_DEFAULT — not a pest-scouting or disease-detection model "
+                "(none exists in this system). Sustained wet/humid conditions are a "
+                "well-established driver of fungal disease pressure and many pest "
+                "population booms in field crops (general agronomic principle, not a "
+                "region-calibrated incidence model). Forecast rainfall at or above "
+                "wet_threshold_mm over 7 days is flagged Elevated."
+            ),
+            "wet_threshold_mm": 25.0,
         },
     },
 }

@@ -126,6 +126,45 @@ def seed_regions_districts_talukas(conn):
             (jalgaon_id, t.upper(), t, True if t in pilot_jalgaon else False),
         )
 
+    # Beyond the two piloted districts (Kolhapur, Jalgaon — the only ones with
+    # sourced lat/lon bounding boxes and agro-zone notes), a real farmer
+    # elsewhere in Maharashtra still needs a district to complete onboarding.
+    # These are real, publicly-known Maharashtra district names — not an
+    # agronomic threshold, so no "don't invent thresholds" concern — but we
+    # do NOT fabricate lat/lon bounding boxes or agro-zone data for them
+    # (left NULL; nothing downstream requires them, and the fertilizer
+    # ledger/RDF lookup and weather were never region-gated to begin with —
+    # both key off crop/stage and lat/lon directly). A farmer outside
+    # Maharashtra entirely gets the explicit "Other" row so onboarding never
+    # forces a false district.
+    other_maharashtra_districts = [
+        "Ahmednagar", "Akola", "Amravati", "Beed", "Bhandara", "Buldhana",
+        "Chandrapur", "Chhatrapati Sambhaji Nagar", "Dhule", "Gadchiroli",
+        "Gondia", "Hingoli", "Jalna", "Latur", "Mumbai City", "Mumbai Suburban",
+        "Nagpur", "Nanded", "Nandurbar", "Nashik", "Dharashiv", "Palghar",
+        "Parbhani", "Pune", "Raigad", "Ratnagiri", "Sangli", "Satara",
+        "Sindhudurg", "Solapur", "Thane", "Wardha", "Washim", "Yavatmal",
+    ]
+    for name in other_maharashtra_districts:
+        cur.execute(
+            "INSERT INTO districts (region_id, district_code, district_name) VALUES (?,?,?)",
+            (region_id, name.upper().replace(" ", "_"), name),
+        )
+
+    other_region_id_row = cur.execute(
+        "SELECT region_id FROM regions WHERE region_code = 'OTHER'"
+    ).fetchone()
+    if other_region_id_row is None:
+        cur.execute(
+            "INSERT INTO regions (region_code, region_name, country_code) VALUES (?,?,?)",
+            ("OTHER", "Outside pilot regions", "IN"),
+        )
+        other_region_id = cur.lastrowid
+        cur.execute(
+            "INSERT INTO districts (region_id, district_code, district_name) VALUES (?,?,?)",
+            (other_region_id, "OTHER", "Other / not listed"),
+        )
+
     conn.commit()
     return region_id, {"Kolhapur": kolhapur_id, "Jalgaon": jalgaon_id}
 
@@ -144,6 +183,58 @@ def seed_crops(conn):
         crop_ids[code] = cur.lastrowid
     conn.commit()
     return crop_ids
+
+
+def seed_crop_calendars(conn, crop_ids):
+    """Source: rag/docs/crop_calendars.md (ICAR-NRRI + MPKV Rahuri Extension
+    Bulletins, Maharashtra, 2022). Day ranges convert the doc's "months after
+    planting" at 30 days/month (the doc's own convention, e.g. "18-month
+    cycle" for Adsali sugarcane). RICE has no seeded crop record in this
+    system (see crops table) so its calendar entry from the source doc is
+    intentionally not loaded here — never seed a calendar for a crop that
+    doesn't exist. SOYBEAN has no calendar in the source doc at all, so it is
+    left uncalendared rather than inventing one — its current_stage stays a
+    declared (farmer/crop-assign) value only, exactly as before this feature.
+    Powers dynamic, sowing-date-driven current_stage resolution in
+    crop_agent.resolve_dynamic_stage(); see docs there for how it's applied.
+    """
+    cur = conn.cursor()
+    calendars = {
+        "SUGARCANE": [
+            ("GERMINATION", 1, 0, 60),
+            ("TILLERING", 2, 60, 120),
+            ("GRAND_GROWTH", 3, 120, 240),
+            ("RIPENING", 4, 240, 420),
+            ("HARVEST", 5, 420, 540),
+        ],
+        "COTTON": [
+            ("GERMINATION", 1, 0, 44),
+            ("SQUARING", 2, 45, 74),
+            ("BOLL_DEVELOPMENT", 3, 75, 99),
+            ("BOLL_OPENING", 4, 100, 129),
+            ("HARVEST", 5, 130, 160),
+        ],
+        "BANANA": [
+            ("RHIZOME_ESTABLISHMENT", 1, 0, 60),
+            ("VEGETATIVE", 2, 60, 120),
+            ("BUNCH_INITIATION", 3, 120, 180),
+            ("SHOOTING", 4, 180, 240),
+            ("BUNCH_FILLING", 5, 240, 300),
+            ("HARVEST", 6, 300, 360),
+        ],
+    }
+    for code, stages in calendars.items():
+        crop_id = crop_ids.get(code)
+        if crop_id is None:
+            continue
+        for stage_name, order, dmin, dmax in stages:
+            cur.execute(
+                """INSERT INTO crop_calendars
+                   (crop_id, stage_name, stage_order, days_after_planting_min, days_after_planting_max, source_file)
+                   VALUES (?,?,?,?,?,?)""",
+                (crop_id, stage_name, order, dmin, dmax, "rag/docs/crop_calendars.md"),
+            )
+    conn.commit()
 
 
 def seed_fertilizer_products(conn):
@@ -406,6 +497,7 @@ def seed_all():
     conn = build_db()
     region_id, district_ids = seed_regions_districts_talukas(conn)
     crop_ids = seed_crops(conn)
+    seed_crop_calendars(conn, crop_ids)
     product_ids = seed_fertilizer_products(conn)
     rec_ids = seed_fertilizer_recommendations(conn, crop_ids)
     field_ids = seed_fields_and_soil_tests(conn, region_id, district_ids, crop_ids)

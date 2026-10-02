@@ -4,12 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { getFields, type FieldSummary } from "@/lib/api";
 
-/**
- * Only an explicit URL selection identifies the active field.
- * Also exposes the full field list (for a selector dropdown) and a setter
- * that updates both state and the URL so the selection survives navigation
- * and can be shared/linked (e.g. dashboard -> upload page).
- */
+/** A field is selected only by an explicit URL or user action, never browser history. */
 export function useFieldParam() {
   const router = useRouter();
   const pathname = usePathname();
@@ -19,7 +14,10 @@ export function useFieldParam() {
   const [fields, setFields] = useState<FieldSummary[]>([]);
   const [fieldsError, setFieldsError] = useState<string | null>(null);
   const [fieldsLoaded, setFieldsLoaded] = useState(false);
-  const fieldId = queryField?.trim() || "";
+  const requestedField = queryField?.trim() || "";
+  const fieldId = fieldsLoaded && !fieldsError && fields.some(
+    field => field.field_code === requestedField || String(field.field_id) === requestedField
+  ) ? requestedField : "";
 
   useEffect(() => {
     let cancelled = false;
@@ -28,7 +26,7 @@ export function useFieldParam() {
       getFields()
         .then((list) => {
           if (cancelled) return;
-          setFields(list);
+          setFields(list.filter(field => !field.is_demo && !/^REAL-\d+$/.test(field.field_code)));
           setFieldsError(null);
           setFieldsLoaded(true);
         })

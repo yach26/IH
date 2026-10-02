@@ -52,7 +52,21 @@ class Optimizer(Protocol):
         ...
 
 
-def estimate_cost(plan_kg_ha: dict[str, float], region_id: str | None = None) -> tuple[float, str, str]:
+def prices_for_plan(plan_kg_ha: dict[str, float], region_id: str | None = None) -> dict[str, float]:
+    """Per-kg price of each product actually in the plan (qty > 0), for a compact display."""
+    cfg = load_region_config(region_id)
+    prices = cfg["cost_model"]["prices_inr_per_kg"]
+    result: dict[str, float] = {}
+    for key, qty in plan_kg_ha.items():
+        if not key.endswith("_kg_ha") or key.startswith("n_supplied") or float(qty) <= 0:
+            continue
+        product = key.replace("_kg_ha", "")
+        if product in prices:
+            result[product] = round(prices[product], 2)
+    return result
+
+
+def estimate_cost(plan_kg_ha: dict[str, float], region_id: str | None = None) -> tuple[float | None, str, str]:
     cfg = load_region_config(region_id)
     prices = cfg["cost_model"]["prices_inr_per_kg"]
     citation = cfg["cost_model"]["citation"]
@@ -63,6 +77,8 @@ def estimate_cost(plan_kg_ha: dict[str, float], region_id: str | None = None) ->
             continue
         product = key.replace("_kg_ha", "")
         price = prices.get(product)
+        if price is None and float(qty) > 0:
+            return None, currency, "PRICE_UNAVAILABLE: " + product
         if price is None:
             continue
         total += float(qty) * float(price)

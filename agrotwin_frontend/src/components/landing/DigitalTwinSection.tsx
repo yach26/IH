@@ -16,8 +16,8 @@ export default function DigitalTwinSection() {
             />
           </div>
           <div className="order-1 lg:order-2">
-            <div className="text-[11px] font-bold uppercase tracking-widest text-[#0F4D35] mb-6">{t("dt.badge")}</div>
-            <h2 className="text-4xl md:text-5xl font-medium text-[#0F4D35] mb-8 leading-tight font-serif">
+            <div className="text-[11px] font-bold uppercase tracking-widest text-[#15803D] mb-6">{t("dt.badge")}</div>
+            <h2 className="text-4xl md:text-5xl font-medium text-[#15803D] mb-8 leading-tight font-serif">
               {t("dt.title")}
             </h2>
             <p className="text-lg text-[#1a1a1a]/70 mb-12 font-light leading-relaxed">
@@ -25,29 +25,29 @@ export default function DigitalTwinSection() {
             </p>
             
             <div className="space-y-8">
-              <div className="flex gap-4 border-b border-[#0F4D35]/10 pb-6">
-                <div className="text-xs font-mono text-[#0F4D35]/40 mt-1">01</div>
+              <div className="flex gap-4 border-b border-[#15803D]/10 pb-6">
+                <div className="text-xs font-mono text-[#15803D]/40 mt-1">01</div>
                 <div>
                   <h4 className="text-sm font-bold text-[#1a1a1a] mb-1">{t("dt.s1")}</h4>
                   <p className="text-sm text-[#1a1a1a]/60">{t("dt.s1d")}</p>
                 </div>
               </div>
-              <div className="flex gap-4 border-b border-[#0F4D35]/10 pb-6">
-                <div className="text-xs font-mono text-[#0F4D35]/40 mt-1">02</div>
+              <div className="flex gap-4 border-b border-[#15803D]/10 pb-6">
+                <div className="text-xs font-mono text-[#15803D]/40 mt-1">02</div>
                 <div>
                   <h4 className="text-sm font-bold text-[#1a1a1a] mb-1">{t("dt.s2")}</h4>
                   <p className="text-sm text-[#1a1a1a]/60">{t("dt.s2d")}</p>
                 </div>
               </div>
-              <div className="flex gap-4 border-b border-[#0F4D35]/10 pb-6">
-                <div className="text-xs font-mono text-[#0F4D35]/40 mt-1">03</div>
+              <div className="flex gap-4 border-b border-[#15803D]/10 pb-6">
+                <div className="text-xs font-mono text-[#15803D]/40 mt-1">03</div>
                 <div>
                   <h4 className="text-sm font-bold text-[#1a1a1a] mb-1">{t("dt.s3")}</h4>
                   <p className="text-sm text-[#1a1a1a]/60">{t("dt.s3d")}</p>
                 </div>
               </div>
               <div className="flex gap-4">
-                <div className="text-xs font-mono text-[#0F4D35]/40 mt-1">04</div>
+                <div className="text-xs font-mono text-[#15803D]/40 mt-1">04</div>
                 <div>
                   <h4 className="text-sm font-bold text-[#1a1a1a] mb-1">{t("dt.s4")}</h4>
                   <p className="text-sm text-[#1a1a1a]/60">{t("dt.s4d")}</p>
